@@ -354,12 +354,92 @@ export const MockDb = {
   },
 
   // Delete a case
-  deleteCase: (id: string) => {
+  deleteCase: async (id: string) => {
     const db = getDb();
     if (db[id]) {
       delete db[id];
       saveDb(db);
     }
+    
+    try {
+        await supabase.from('cases').delete().eq('id', id);
+    } catch (e) {
+        console.warn("Supabase delete failed:", e);
+    }
+  },
+
+  // Sync all cases for a user from Cloud to Local
+  syncUserCases: async (userId: string): Promise<CaseData[]> => {
+      try {
+          const { data: remoteCases, error } = await supabase
+              .from('cases')
+              .select('*')
+              .or(`plaintiff_id.eq.${userId},defendant_id.eq.${userId}`);
+
+          if (error || !remoteCases) {
+              return MockDb.getCasesForUser(userId);
+          }
+
+          const db = getDb();
+          const remoteIds = new Set<string>();
+
+          remoteCases.forEach(remoteCase => {
+              remoteIds.add(remoteCase.id);
+              
+              // Map snake_case to camelCase
+              const localCase: CaseData = {
+                  id: remoteCase.id,
+                  shareCode: remoteCase.share_code,
+                  createdDate: new Date(remoteCase.created_at).getTime(),
+                  lastUpdateDate: Date.now(),
+                  plaintiffId: remoteCase.plaintiff_id,
+                  defendantId: remoteCase.defendant_id,
+                  category: remoteCase.category,
+                  description: remoteCase.description || '',
+                  title: remoteCase.title,
+                  plaintiffSummary: remoteCase.plaintiff_summary,
+                  demands: remoteCase.demands || '',
+                  evidence: remoteCase.evidence || [],
+                  defenseStatement: remoteCase.defense_statement || '',
+                  defenseSummary: remoteCase.defense_summary,
+                  defendantEvidence: remoteCase.defendant_evidence || [],
+                  plaintiffRebuttal: remoteCase.plaintiff_rebuttal || '',
+                  plaintiffRebuttalEvidence: remoteCase.plaintiff_rebuttal_evidence || [], 
+                  defendantRebuttal: remoteCase.defendant_rebuttal || '',
+                  defendantRebuttalEvidence: remoteCase.defendant_rebuttal_evidence || [],
+                  plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || false,
+                  defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || false,
+                  disputePoints: remoteCase.dispute_points || [],
+                  plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || false,
+                  defendantFinishedDebate: remoteCase.defendant_finished_debate || false,
+                  lastAnalyzedHash: remoteCase.last_analyzed_hash, 
+                  judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
+                  status: remoteCase.status as CaseStatus,
+                  verdict: remoteCase.verdict
+              };
+
+              // Merge with local to preserve unsynced changes if needed, 
+              // but for list view, we generally trust remote or just update existence.
+              // Here we overwrite local cache with fresh remote data to ensure consistency.
+              db[localCase.id] = localCase;
+          });
+
+          // Remove local cases that are NOT in remote (deleted by other party)
+          // Only remove cases where the user is involved.
+          Object.keys(db).forEach(id => {
+              const c = db[id];
+              if ((c.plaintiffId === userId || c.defendantId === userId) && !remoteIds.has(id)) {
+                  delete db[id];
+              }
+          });
+
+          saveDb(db);
+          return MockDb.getCasesForUser(userId);
+
+      } catch (e) {
+          console.warn("Sync user cases failed:", e);
+          return MockDb.getCasesForUser(userId);
+      }
   },
 
   // For debugging/demo: Clear DB

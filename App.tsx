@@ -603,8 +603,9 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
   
   const lastActionTimeRef = useRef<number>(0);
 
-  const load = async () => {
-    if (Date.now() - lastActionTimeRef.current < 5000) {
+  const load = async (force = false) => {
+    // Skip throttle if forced (e.g. from realtime event)
+    if (!force && Date.now() - lastActionTimeRef.current < 5000) {
         return;
     }
 
@@ -614,9 +615,32 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
   };
 
   useEffect(() => { 
-      load(); 
-      const int = setInterval(load, 3000); 
-      return () => clearInterval(int); 
+      load(true); 
+      
+      const int = setInterval(() => load(false), 3000); 
+
+      // Realtime Subscription
+      const channel = supabase
+        .channel(`case-updates-${caseId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'cases',
+            filter: `id=eq.${caseId}`,
+          },
+          (payload) => {
+             console.log("Realtime update received, reloading...", payload);
+             load(true);
+          }
+        )
+        .subscribe();
+
+      return () => { 
+          clearInterval(int); 
+          supabase.removeChannel(channel);
+      }; 
   }, [caseId]);
 
   const update = async (patch: Partial<CaseData>) => {
@@ -872,13 +896,17 @@ const App = () => {
   // Load cases
   useEffect(() => {
     if (user) {
+      // Initial load from local
       const cases = MockDb.getCasesForUser(user.id);
       setMyCases(cases);
       
+      // Sync with cloud immediately
+      MockDb.syncUserCases(user.id).then(setMyCases);
+
       const interval = setInterval(() => {
-         const updated = MockDb.getCasesForUser(user.id);
-         setMyCases(updated);
-      }, 3000); // Poll for updates in list view
+         // Poll cloud for updates (including deletions)
+         MockDb.syncUserCases(user.id).then(setMyCases);
+      }, 5000); // Poll every 5s
       return () => clearInterval(interval);
     }
   }, [user, activeCaseId]);
