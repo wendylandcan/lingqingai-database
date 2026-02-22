@@ -136,6 +136,19 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
     }
   };
 
+  // Auto-transition effect
+  useEffect(() => {
+      const bothFinished = data.plaintiffFinishedCrossExam && data.defendantFinishedCrossExam;
+      if (bothFinished && data.status === CaseStatus.CROSS_EXAMINATION && !isAnalyzing) {
+          // To avoid race conditions (both clients running AI), only Plaintiff triggers auto-transition.
+          // Defendant can still trigger manually if needed via the button.
+          if (isPlaintiff) {
+              console.log("Auto-triggering phase transition (Plaintiff)...");
+              executePhaseTransition();
+          }
+      }
+  }, [data.plaintiffFinishedCrossExam, data.defendantFinishedCrossExam, data.status]);
+
   const handleFinishClick = () => {
       const isMyFinished = isPlaintiff ? data.plaintiffFinishedCrossExam : data.defendantFinishedCrossExam;
       const isOtherFinished = isPlaintiff ? data.defendantFinishedCrossExam : data.plaintiffFinishedCrossExam;
@@ -146,20 +159,21 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
           return;
       }
 
-      // Case 2: I am finishing now
+      // Case 2: I am finishing now -> Update DB
+      // We only update the flag here. The useEffect above (or the other client) will handle the transition 
+      // once the DB update propagates via Realtime.
+      // However, for better UX (speed), if we KNOW we are the last one, we try to trigger immediately.
+      
       const updates: Partial<CaseData> = {};
       if (isPlaintiff) {
           updates.plaintiffFinishedCrossExam = true;
-          // If defendant already finished, this action completes the set -> Proceed
           if (data.defendantFinishedCrossExam) {
              executePhaseTransition(updates);
           } else {
-             // Just set my flag
              onSubmit(updates);
           }
       } else if (isDefendant) {
           updates.defendantFinishedCrossExam = true;
-          // If plaintiff already finished, this action completes the set -> Proceed
           if (data.plaintiffFinishedCrossExam) {
               executePhaseTransition(updates);
           } else {
@@ -179,8 +193,8 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
       if (myStatus) {
           // I have finished
           if (otherStatus) {
-              // Both finished -> Allow manual trigger to unblock
-              return { text: "双方已完成，点击生成争议焦点", disabled: false, icon: <Swords size={20}/> };
+              // Both finished
+              return { text: "双方已完成，正在生成争议焦点...", disabled: isAnalyzing, icon: isAnalyzing ? <Loader2 className="animate-spin" size={20}/> : <Swords size={20}/> };
           } else {
               // Waiting for other
               return { text: `等待${otherRoleName}结束质证...`, disabled: true, icon: <Hourglass className="animate-pulse" size={20}/> };
