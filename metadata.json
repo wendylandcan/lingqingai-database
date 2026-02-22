@@ -1,0 +1,7 @@
+{
+  "name": "Copy of 理清爱",
+  "description": "A relationship dispute resolution tool that uses AI as a neutral judge to turn emotional arguments into objective fact-finding and fair verdicts.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

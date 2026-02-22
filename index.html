@@ -1,0 +1,66 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>理清爱</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Noto Sans SC', sans-serif;
+        background-color: #fdf2f8; /* pink-50 */
+      }
+      /* Hide scrollbar for clean UI */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      
+      /* Utility class for the cute font */
+      .font-cute {
+        font-family: 'ZCOOL KuaiLe', cursive;
+      }
+
+      /* Animation for Judge Reading Head */
+      @keyframes readingHead {
+        0% { transform: translateX(-5px) rotate(-2deg); }
+        100% { transform: translateX(5px) rotate(2deg); }
+      }
+      .animate-reading-head {
+        animation: readingHead 2s ease-in-out infinite alternate;
+      }
+
+      /* CSS 媒体查询 */
+      @media (max-width: 768px) {
+        .glass-effect {
+          backdrop-filter: none !important; /* 关掉模糊 */
+          background: rgba(255, 255, 255, 0.95) !important; /* 改用不透明背景 */
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "openai": "https://esm.sh/openai@^4.0.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "react-markdown": "https://esm.sh/react-markdown@9?bundle"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
