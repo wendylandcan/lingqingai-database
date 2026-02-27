@@ -9,7 +9,7 @@ const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_API_KEY });
 // --- Model Constants ---
 // Upgraded to Gemini 3 series as per latest guidelines and to potentially alleviate 2.0 flash quota issues
 const GEMINI_MODEL_FLASH = 'gemini-3-flash-preview'; 
-const GEMINI_MODEL_PRO = 'gemini-3-pro-preview'; 
+const GEMINI_MODEL_PRO = 'gemini-3.1-pro-preview'; 
 // Verdict generation specifically uses Gemini 3 Flash for better creative instruction following
 const GEMINI_MODEL_VERDICT = 'gemini-3-flash-preview';
 
@@ -150,7 +150,7 @@ async function callGemini(params: {
     if (message.includes('timed out')) {
        throw new Error("网络请求超时，请检查网络后重试");
     }
-    throw new Error("AI 法官正在休庭，请稍后重试");
+    throw new Error(`AI 法官正在休庭 (${message})，请稍后重试`);
   }
 }
 
@@ -356,7 +356,7 @@ export const analyzeDisputeFocus = async (
 
   try {
     const result = await callGemini({
-      model: GEMINI_MODEL_FLASH, // Use FLASH to avoid Quota Limits (429)
+      model: GEMINI_MODEL_PRO, // Use PRO for better reasoning and to avoid Flash issues
       jsonMode: true,
       temperature: 0.4, // Lower temperature for more deterministic JSON
       systemInstruction: JUDGE_SYSTEM_PROMPT,

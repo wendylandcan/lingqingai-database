@@ -333,8 +333,11 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
           <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center animate-fade-in">
               <div className="mb-8 relative">
                   <div className="absolute inset-0 bg-purple-100 rounded-full animate-ping opacity-20"></div>
-                  <div className="bg-white p-6 rounded-full shadow-xl border border-purple-100 relative z-10">
-                      <Scale size={48} className="text-purple-600 animate-pulse" />
+                  <div className="bg-white p-6 rounded-full shadow-xl border border-purple-100 relative z-10 w-32 h-32 flex items-center justify-center">
+                      <div className="relative">
+                          <BookOpen size={64} className="text-slate-700" />
+                          <PenTool size={32} className="text-red-500 absolute -right-2 bottom-0 animate-pulse transform -rotate-12" />
+                      </div>
                   </div>
               </div>
               <h2 className="text-2xl font-bold text-slate-800 mb-2 font-cute">法官正在分析争议焦点</h2>
