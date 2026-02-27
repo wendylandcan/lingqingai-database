@@ -3,8 +3,8 @@ import { GoogleGenAI } from "@google/genai";
 import { JudgePersona, Verdict, EvidenceItem, SentimentResult, FactCheckResult, DisputePoint, EvidenceType } from "../types";
 
 // --- Initialize Client ---
-// Use import.meta.env.VITE_GOOGLE_API_KEY as requested
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_API_KEY });
+// Use process.env.GEMINI_API_KEY as per platform guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // --- Model Constants ---
 // Upgraded to Gemini 3 series as per latest guidelines and to potentially alleviate 2.0 flash quota issues
