@@ -621,11 +621,29 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
     setLoading(false);
   };
 
+  // Debounce the load function for realtime updates to prevent update storms
+  const debouncedLoadRef = useRef<any>(null);
+  useEffect(() => {
+      let timeout: NodeJS.Timeout;
+      debouncedLoadRef.current = () => {
+          clearTimeout(timeout);
+          timeout = setTimeout(() => {
+              console.log('执行防抖后的刷新...');
+              load(true);
+          }, 1000); // 1 second debounce
+      };
+      return () => clearTimeout(timeout);
+  }, [caseId]); // Re-create debounce when caseId changes
+
   useEffect(() => { 
       load(); 
       
+      // Use a unique channel name per case to avoid collisions
+      const channelName = `room-${caseId}`;
+      console.log(`正在监听频道: ${channelName}`);
+
       const channel = supabase
-        .channel('schema-db-changes')
+        .channel(channelName)
         .on(
           'postgres_changes',
           {
@@ -634,13 +652,20 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
             table: 'cases',
           },
           (payload: any) => {
-            console.log('监听到数据库变动，执行全量刷新...', payload);
-            load(true);
+            console.log('监听到数据库变动 (Raw):', payload);
+            // Only trigger load if the update is relevant to THIS case
+            // Note: We blindly trust the event, but debounce the load
+            if (debouncedLoadRef.current) {
+                debouncedLoadRef.current();
+            }
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+            console.log(`频道 ${channelName} 订阅状态:`, status);
+        });
 
       return () => {
+        console.log(`正在取消监听频道: ${channelName}`);
         supabase.removeChannel(channel);
       };
   }, [caseId]);
