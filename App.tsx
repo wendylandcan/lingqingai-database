@@ -50,48 +50,6 @@ import {
 import { supabase } from './supabaseClient';
 import Auth from './components/Auth';
 
-export class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("Uncaught error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-slate-50">
-          <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-red-100 animate-fade-in">
-            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <AlertOctagon size={32} className="text-red-500" />
-            </div>
-            <h1 className="text-xl font-bold text-slate-800 mb-2">应用程序遇到错误</h1>
-            <p className="text-slate-500 text-sm mb-6">很抱歉，发生了一个意外错误。请尝试刷新页面。</p>
-            <div className="bg-slate-50 p-4 rounded-lg text-left text-xs font-mono text-slate-600 overflow-auto max-h-40 mb-6 border border-slate-200">
-              {this.state.error?.message || "Unknown Error"}
-            </div>
-            <button 
-                onClick={() => window.location.reload()}
-                className="w-full bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-colors flex items-center justify-center gap-2"
-            >
-                <RefreshCw size={16} /> 刷新页面
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
 const FilingForm = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Partial<CaseData>) => Promise<void> | void }) => {
   const [desc, setDesc] = useState(data.description);
   const [demands, setDemands] = useState(data.demands);
@@ -187,6 +145,14 @@ const DefenseStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Partial
         <div className="text-sm text-indigo-600 mb-3 bg-white/50 p-2 rounded">
            <MessageContent text={data.plaintiffSummary || data.description} />
         </div>
+        {data.demands && (
+            <>
+                <h2 className="text-lg font-bold text-indigo-900 mb-2 font-cute">原告诉请</h2>
+                <div className="text-sm text-indigo-600 mb-3 bg-white/50 p-2 rounded">
+                    <MessageContent text={data.demands} />
+                </div>
+            </>
+        )}
       </div>
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-xl font-bold text-slate-800 mb-4 font-cute">被告举证与答辩</h2>
@@ -216,11 +182,8 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
     const isDefendant = userRole === UserRole.DEFENDANT;
     const isSpectator = userRole === UserRole.SPECTATOR;
 
-    // Safeguard: Ensure disputePoints is an array
-    const points = Array.isArray(data.disputePoints) ? data.disputePoints : [];
-
     const handleArgUpdate = (pointId: string, text: string) => {
-        const updatedPoints = points.map(p => {
+        const updatedPoints = data.disputePoints.map(p => {
             if (p.id === pointId) {
                 return isPlaintiff ? { ...p, plaintiffArg: text } : { ...p, defendantArg: text };
             }
@@ -276,25 +239,15 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
             </div>
 
             <div className="space-y-6">
-                {points.length === 0 && (
-                    <div className="text-center p-8 text-slate-500 bg-white rounded-xl border border-slate-200 border-dashed">
-                        <AlertOctagon size={48} className="mx-auto mb-4 text-slate-300" />
-                        <p className="font-bold text-slate-600">暂无争议焦点</p>
-                        <p className="text-xs mt-2 text-slate-400">可能是 AI 生成失败或同步问题。</p>
-                        <p className="text-xs mt-1 text-slate-400">您可以直接点击下方按钮结束辩论。</p>
-                    </div>
-                )}
-                {points.map((point, index) => {
-                    if (!point) return null;
-                    return (
-                    <div key={point.id || index} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                {data.disputePoints.map((point, index) => (
+                    <div key={point.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                         <div className="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
                             <span className="bg-slate-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
                                 {index + 1}
                             </span>
                             <div>
-                                <h3 className="font-bold text-slate-800 text-lg">{point.title || "未命名争议点"}</h3>
-                                <p className="text-slate-500 text-sm">{point.description || "暂无描述"}</p>
+                                <h3 className="font-bold text-slate-800 text-lg">{point.title}</h3>
+                                <p className="text-slate-500 text-sm">{point.description}</p>
                             </div>
                         </div>
 
@@ -336,7 +289,7 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
                             </div>
                         </div>
                     </div>
-                )})}
+                ))}
             </div>
 
             <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl text-sm text-yellow-800 flex gap-2 items-start">
@@ -658,62 +611,27 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
   
   const lastActionTimeRef = useRef<number>(0);
 
-  const load = async (force = false) => {
-    // Skip throttle if forced (e.g. from realtime event)
-    if (!force && Date.now() - lastActionTimeRef.current < 5000) {
-        return;
-    }
-
-    const c = await MockDb.syncCaseFromCloud(caseId);
-    
-    // Prevent overwriting local optimistic updates if a user action happened recently
+  const load = async () => {
     if (Date.now() - lastActionTimeRef.current < 5000) {
         return;
     }
 
+    const c = await MockDb.syncCaseFromCloud(caseId);
     if (c) setData(c);
     setLoading(false);
   };
 
   useEffect(() => { 
-      load(true); 
-      
-      const int = setInterval(() => load(false), 3000); 
-
-      // Realtime Subscription
-      const channel = supabase
-        .channel(`case-updates-${caseId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'cases',
-            filter: `id=eq.${caseId}`,
-          },
-          (payload) => {
-             console.log("Realtime update received, reloading...", payload);
-             load(true);
-          }
-        )
-        .subscribe();
-
-      return () => { 
-          clearInterval(int); 
-          supabase.removeChannel(channel);
-      }; 
+      load(); 
+      const int = setInterval(load, 3000); 
+      return () => clearInterval(int); 
   }, [caseId]);
 
   const update = async (patch: Partial<CaseData>) => {
     if (!data) return;
-    try {
-        lastActionTimeRef.current = Date.now();
-        const updated = await MockDb.updateCase(data.id, patch);
-        setData(updated);
-    } catch (e) {
-        console.error("Update failed:", e);
-        alert("数据同步失败，请重试");
-    }
+    lastActionTimeRef.current = Date.now();
+    const updated = await MockDb.updateCase(data.id, patch);
+    setData(updated);
   };
 
   const handleDefaultJudgment = () => {
@@ -863,15 +781,10 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
       }
       break;
     case CaseStatus.CROSS_EXAMINATION: 
-    case CaseStatus.CROSS_EXAMINATION_P_DONE:
-    case CaseStatus.CROSS_EXAMINATION_D_DONE:
-    case CaseStatus.ANALYZING_DISPUTE:
       title = "质证环节";
       content = <VerdictSection data={data} onSubmit={update} role={role} />;
       break;
     case CaseStatus.DEBATE: 
-    case CaseStatus.DEBATE_P_DONE:
-    case CaseStatus.DEBATE_D_DONE:
       title = "争议焦点辩论";
       content = <DisputeDebateStep data={data} onSubmit={update} userRole={role} />;
       break;
@@ -967,17 +880,13 @@ const App = () => {
   // Load cases
   useEffect(() => {
     if (user) {
-      // Initial load from local
       const cases = MockDb.getCasesForUser(user.id);
       setMyCases(cases);
       
-      // Sync with cloud immediately
-      MockDb.syncUserCases(user.id).then(setMyCases);
-
       const interval = setInterval(() => {
-         // Poll cloud for updates (including deletions)
-         MockDb.syncUserCases(user.id).then(setMyCases);
-      }, 5000); // Poll every 5s
+         const updated = MockDb.getCasesForUser(user.id);
+         setMyCases(updated);
+      }, 3000); // Poll for updates in list view
       return () => clearInterval(interval);
     }
   }, [user, activeCaseId]);
@@ -989,25 +898,14 @@ const App = () => {
   };
 
   const handleJoinCase = async () => {
-    if (!user) return;
-    if (!joinCode) {
-        alert("请输入案件码");
-        return;
-    }
-    
+    if (!user || !joinCode) return;
     setIsJoining(true);
-    try {
-        const result = await MockDb.joinCase(joinCode, user.id);
-        if (result.success && result.caseId) {
-            setActiveCaseId(result.caseId);
-        } else {
-            alert(result.error || "加入失败");
-        }
-    } catch (e) {
-        console.error(e);
-        alert("加入过程中发生错误");
-    } finally {
-        setIsJoining(false);
+    const result = await MockDb.joinCase(joinCode, user.id);
+    setIsJoining(false);
+    if (result.success && result.caseId) {
+      setActiveCaseId(result.caseId);
+    } else {
+      alert(result.error || "加入失败");
     }
   };
 
@@ -1095,14 +993,9 @@ const App = () => {
                     <input 
                         value={joinCode}
                         onChange={e => setJoinCode(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !isJoining && joinCode.length >= 6) {
-                                handleJoinCase();
-                            }
-                        }}
                         placeholder="输入 6 位案件码"
                         className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-200 uppercase tracking-widest font-mono text-lg text-center font-bold text-slate-700 placeholder:font-normal placeholder:tracking-normal placeholder:text-sm"
-                        maxLength={10}
+                        maxLength={6}
                     />
                     <button 
                         onClick={handleJoinCase}
@@ -1147,22 +1040,23 @@ const App = () => {
                                         </span>
                                         <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${
                                             c.status === CaseStatus.CLOSED ? 'bg-slate-100 text-slate-500' : 
-                                            c.status === CaseStatus.ADJUDICATING ? 'bg-amber-100 text-amber-700' :
-                                            c.status === CaseStatus.DEBATE ? 'bg-rose-100 text-rose-700' :
-                                            c.status === CaseStatus.CROSS_EXAMINATION ? 'bg-purple-100 text-purple-700' :
-                                            c.status === CaseStatus.DEFENSE_PENDING ? 'bg-orange-100 text-orange-700' :
-                                            'bg-blue-100 text-blue-700'
+                                            c.status === CaseStatus.ADJUDICATING ? 'bg-purple-100 text-purple-600' :
+                                            c.status === CaseStatus.CANCELLED ? 'bg-red-50 text-red-400' :
+                                            'bg-green-100 text-green-600'
                                         }`}>
-                                            {
-                                                c.status === CaseStatus.DRAFTING ? '原告起诉' :
-                                                c.status === CaseStatus.PLAINTIFF_EVIDENCE ? '原告举证' :
-                                                c.status === CaseStatus.DEFENSE_PENDING ? '被告应诉' :
-                                                c.status === CaseStatus.CROSS_EXAMINATION ? '质证' :
-                                                c.status === CaseStatus.DEBATE ? '辩论' :
-                                                c.status === CaseStatus.ADJUDICATING ? 'AI审理' :
-                                                c.status === CaseStatus.CLOSED ? '已结案' :
-                                                '进行中'
-                                            }
+                                            {(() => {
+                                                switch (c.status) {
+                                                    case CaseStatus.DRAFTING: return '原告起诉';
+                                                    case CaseStatus.PLAINTIFF_EVIDENCE: return '原告举证';
+                                                    case CaseStatus.DEFENSE_PENDING: return '被告答辩';
+                                                    case CaseStatus.CROSS_EXAMINATION: return '质证中';
+                                                    case CaseStatus.DEBATE: return '辩论中';
+                                                    case CaseStatus.ADJUDICATING: return 'AI审理中';
+                                                    case CaseStatus.CLOSED: return '已结案';
+                                                    case CaseStatus.CANCELLED: return '已撤诉';
+                                                    default: return '进行中';
+                                                }
+                                            })()}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2">

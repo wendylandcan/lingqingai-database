@@ -3,16 +3,13 @@ import { GoogleGenAI } from "@google/genai";
 import { JudgePersona, Verdict, EvidenceItem, SentimentResult, FactCheckResult, DisputePoint, EvidenceType } from "../types";
 
 // --- Initialize Client ---
-// Helper to get the AI client with the latest key
-const getAiClient = () => {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || import.meta.env.VITE_GOOGLE_API_KEY || 'MISSING_API_KEY';
-  return new GoogleGenAI({ apiKey });
-};
+// Use process.env.API_KEY directly as per guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // --- Model Constants ---
-// Use Flash for speed and stability in this environment
+// Upgraded to Gemini 3 series as per latest guidelines and to potentially alleviate 2.0 flash quota issues
 const GEMINI_MODEL_FLASH = 'gemini-3-flash-preview'; 
-const GEMINI_MODEL_PRO = 'gemini-3-flash-preview'; // Revert to Flash to avoid permission issues with Pro
+const GEMINI_MODEL_PRO = 'gemini-3-pro-preview'; 
 // Verdict generation specifically uses Gemini 3 Flash for better creative instruction following
 const GEMINI_MODEL_VERDICT = 'gemini-3-flash-preview';
 
@@ -130,7 +127,6 @@ async function callGemini(params: {
         contentsInput = params.prompt;
       }
 
-      const ai = getAiClient();
       const apiPromise = ai.models.generateContent({
         model: params.model,
         contents: contentsInput,
@@ -154,7 +150,7 @@ async function callGemini(params: {
     if (message.includes('timed out')) {
        throw new Error("网络请求超时，请检查网络后重试");
     }
-    throw new Error(`AI 法官正在休庭 (${message})，请稍后重试`);
+    throw new Error("AI 法官正在休庭，请稍后重试");
   }
 }
 
@@ -162,7 +158,6 @@ async function callGemini(params: {
 
 export const transcribeAudio = async (base64Audio: string, mimeType: string): Promise<string> => {
   try {
-    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL_FLASH,
       config: {
@@ -185,10 +180,13 @@ export const transcribeAudio = async (base64Audio: string, mimeType: string): Pr
 export const summarizeStatement = async (text: string, role: string): Promise<string> => {
   if (!text) return "";
   try {
+    let instruction = `Summarize the ${role}'s statement into 50-100 Chinese characters. Retain facts and emotion. Do NOT include word count (e.g. (96字)). Do NOT use markdown bolding (e.g. **text**).`;
+    let content = `Statement: "${text}"`;
+
     return await callGemini({
       model: GEMINI_MODEL_FLASH,
-      systemInstruction: `Summarize the ${role}'s statement into 50-100 Chinese characters. Retain facts and emotion.`,
-      prompt: `Statement: "${text}"`
+      systemInstruction: instruction,
+      prompt: content
     });
   } catch (error) {
     return text.slice(0, 150) + "...";
@@ -361,7 +359,7 @@ export const analyzeDisputeFocus = async (
 
   try {
     const result = await callGemini({
-      model: GEMINI_MODEL_PRO, // Use PRO for better reasoning and to avoid Flash issues
+      model: GEMINI_MODEL_FLASH, // Use FLASH to avoid Quota Limits (429)
       jsonMode: true,
       temperature: 0.4, // Lower temperature for more deterministic JSON
       systemInstruction: JUDGE_SYSTEM_PROMPT,
