@@ -181,15 +181,27 @@ export const MockDb = {
 
   // Sync a specific case from Cloud to Local (Fix for Plaintiff waiting screen)
   syncCaseFromCloud: async (caseId: string): Promise<CaseData | null> => {
-    // NOTE: We do NOT read db here initially. We read it after the async call 
-    // to ensure we capture any local updates that happened while waiting for the network.
+    // Resolve share_code from local DB if possible, to avoid querying by timestamp ID
+    // This fixes the 406 error where a timestamp ID was passed to .eq('share_code', ...)
+    const preDb = getDb();
+    const preLocal = preDb[caseId];
     
+    let query = supabase.from('cases').select('*');
+
+    if (preLocal && preLocal.shareCode) {
+        // Best case: we have local data, use the verified share code
+        query = query.eq('share_code', preLocal.shareCode);
+    } else if (caseId.length === 6 && /^[A-Z0-9]+$/.test(caseId)) {
+        // It looks like a share code, treat it as such
+        query = query.eq('share_code', caseId);
+    } else {
+        // Fallback: It's likely an ID (timestamp or UUID), query by ID
+        // This prevents passing a timestamp ID to the share_code column
+        query = query.eq('id', caseId);
+    }
+
     try {
-      const { data: remoteCase, error } = await supabase
-        .from('cases')
-        .select('*')
-        .eq('share_code', caseId)
-        .single();
+      const { data: remoteCase, error } = await query.single();
 
       // Read fresh local DB *after* the async gap to avoid race condition overwrites
       const freshDb = getDb();
