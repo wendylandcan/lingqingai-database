@@ -623,8 +623,27 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
 
   useEffect(() => { 
       load(); 
-      const int = setInterval(load, 3000); 
-      return () => clearInterval(int); 
+      
+      const channel = supabase
+        .channel('schema-db-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'cases',
+            filter: `share_code=eq.${caseId}`,
+          },
+          (payload) => {
+            console.log('Realtime update received!', payload);
+            load();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
   }, [caseId]);
 
   const update = async (patch: Partial<CaseData>) => {

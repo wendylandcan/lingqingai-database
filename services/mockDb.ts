@@ -122,7 +122,7 @@ export const MockDb = {
         const { error: updateError } = await supabase
           .from('cases')
           .update({ defendant_id: defendantId })
-          .eq('id', remoteCase.id);
+          .eq('share_code', remoteCase.share_code);
         
         if (updateError) {
           console.error("Join update failed:", updateError);
@@ -188,7 +188,7 @@ export const MockDb = {
       const { data: remoteCase, error } = await supabase
         .from('cases')
         .select('*')
-        .eq('id', caseId)
+        .eq('share_code', caseId)
         .single();
 
       // Read fresh local DB *after* the async gap to avoid race condition overwrites
@@ -342,7 +342,9 @@ export const MockDb = {
         if (updates.defendantId !== undefined) payload.defendant_id = updates.defendantId;
 
         if (Object.keys(payload).length > 0) {
-            const { error } = await supabase.from('cases').update(payload).eq('id', id);
+            // FIX: Use shareCode from the case object, NOT the id (which is timestamp)
+            const shareCode = updatedCase.shareCode;
+            const { error } = await supabase.from('cases').update(payload).eq('share_code', shareCode);
             if (error) {
                 console.warn("Supabase update failed:", error.message);
             }
