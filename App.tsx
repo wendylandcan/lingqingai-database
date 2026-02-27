@@ -174,8 +174,11 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
     const isDefendant = userRole === UserRole.DEFENDANT;
     const isSpectator = userRole === UserRole.SPECTATOR;
 
+    // Safeguard: Ensure disputePoints is an array
+    const points = Array.isArray(data.disputePoints) ? data.disputePoints : [];
+
     const handleArgUpdate = (pointId: string, text: string) => {
-        const updatedPoints = data.disputePoints.map(p => {
+        const updatedPoints = points.map(p => {
             if (p.id === pointId) {
                 return isPlaintiff ? { ...p, plaintiffArg: text } : { ...p, defendantArg: text };
             }
@@ -231,15 +234,25 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
             </div>
 
             <div className="space-y-6">
-                {data.disputePoints.map((point, index) => (
-                    <div key={point.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                {points.length === 0 && (
+                    <div className="text-center p-8 text-slate-500 bg-white rounded-xl border border-slate-200 border-dashed">
+                        <AlertOctagon size={48} className="mx-auto mb-4 text-slate-300" />
+                        <p className="font-bold text-slate-600">暂无争议焦点</p>
+                        <p className="text-xs mt-2 text-slate-400">可能是 AI 生成失败或同步问题。</p>
+                        <p className="text-xs mt-1 text-slate-400">您可以直接点击下方按钮结束辩论。</p>
+                    </div>
+                )}
+                {points.map((point, index) => {
+                    if (!point) return null;
+                    return (
+                    <div key={point.id || index} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                         <div className="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
                             <span className="bg-slate-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
                                 {index + 1}
                             </span>
                             <div>
-                                <h3 className="font-bold text-slate-800 text-lg">{point.title}</h3>
-                                <p className="text-slate-500 text-sm">{point.description}</p>
+                                <h3 className="font-bold text-slate-800 text-lg">{point.title || "未命名争议点"}</h3>
+                                <p className="text-slate-500 text-sm">{point.description || "暂无描述"}</p>
                             </div>
                         </div>
 
@@ -281,7 +294,7 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
                             </div>
                         </div>
                     </div>
-                ))}
+                )})}
             </div>
 
             <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl text-sm text-yellow-800 flex gap-2 items-start">
