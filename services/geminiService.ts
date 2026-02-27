@@ -3,14 +3,16 @@ import { GoogleGenAI } from "@google/genai";
 import { JudgePersona, Verdict, EvidenceItem, SentimentResult, FactCheckResult, DisputePoint, EvidenceType } from "../types";
 
 // --- Initialize Client ---
-// Use process.env.GEMINI_API_KEY as per platform guidelines, fallback to VITE_GOOGLE_API_KEY
-const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY || 'MISSING_API_KEY';
-const ai = new GoogleGenAI({ apiKey });
+// Helper to get the AI client with the latest key
+const getAiClient = () => {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || import.meta.env.VITE_GOOGLE_API_KEY || 'MISSING_API_KEY';
+  return new GoogleGenAI({ apiKey });
+};
 
 // --- Model Constants ---
-// Upgraded to Gemini 3 series as per latest guidelines and to potentially alleviate 2.0 flash quota issues
+// Use Flash for speed and stability in this environment
 const GEMINI_MODEL_FLASH = 'gemini-3-flash-preview'; 
-const GEMINI_MODEL_PRO = 'gemini-3.1-pro-preview'; 
+const GEMINI_MODEL_PRO = 'gemini-3-flash-preview'; // Revert to Flash to avoid permission issues with Pro
 // Verdict generation specifically uses Gemini 3 Flash for better creative instruction following
 const GEMINI_MODEL_VERDICT = 'gemini-3-flash-preview';
 
@@ -128,6 +130,7 @@ async function callGemini(params: {
         contentsInput = params.prompt;
       }
 
+      const ai = getAiClient();
       const apiPromise = ai.models.generateContent({
         model: params.model,
         contents: contentsInput,
@@ -159,6 +162,7 @@ async function callGemini(params: {
 
 export const transcribeAudio = async (base64Audio: string, mimeType: string): Promise<string> => {
   try {
+    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL_FLASH,
       config: {

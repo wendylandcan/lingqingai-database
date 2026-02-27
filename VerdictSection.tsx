@@ -12,7 +12,8 @@ import {
   Check,
   Hourglass,
   AlertCircle,
-  X
+  X,
+  Key
 } from 'lucide-react';
 import { 
   CaseData, 
@@ -343,9 +344,35 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
               <p className="text-slate-500 mb-8 max-w-md">AI 法官正在仔细阅读双方的陈述与证据，为您提炼核心争议点... (预计 30 秒)</p>
               
               {errorMsg && (
-                  <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg flex items-center gap-2 text-sm max-w-md animate-fade-in">
-                      <AlertOctagon size={16}/> {errorMsg}
-                      <button onClick={() => executePhaseTransition()} className="ml-auto underline font-bold hover:text-red-800">重试</button>
+                  <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg flex flex-col items-start gap-2 text-sm max-w-md animate-fade-in w-full">
+                      <div className="flex items-start gap-2 w-full">
+                          <AlertOctagon size={16} className="shrink-0 mt-0.5"/> 
+                          <span className="break-all">{errorMsg}</span>
+                      </div>
+                      
+                      <div className="flex gap-2 w-full justify-end mt-2 items-center">
+                        {(errorMsg.includes("API Key") || errorMsg.includes("400")) && (
+                            <button 
+                                onClick={async () => {
+                                    try {
+                                        if ((window as any).aistudio?.openSelectKey) {
+                                            await (window as any).aistudio.openSelectKey();
+                                            window.location.reload();
+                                        } else {
+                                            alert("无法打开密钥选择器，请手动检查环境配置。");
+                                        }
+                                    } catch (e) {
+                                        console.error(e);
+                                    }
+                                }}
+                                className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-md text-xs font-bold flex items-center gap-1 transition-colors mr-auto"
+                            >
+                                <Key size={14} />
+                                配置 AI 密钥
+                            </button>
+                        )}
+                        <button onClick={() => executePhaseTransition()} className="underline font-bold hover:text-red-800">重试</button>
+                      </div>
                   </div>
               )}
 
