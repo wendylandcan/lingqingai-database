@@ -610,6 +610,12 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
     }
 
     const c = await MockDb.syncCaseFromCloud(caseId);
+    
+    // Prevent overwriting local optimistic updates if a user action happened recently
+    if (Date.now() - lastActionTimeRef.current < 5000) {
+        return;
+    }
+
     if (c) setData(c);
     setLoading(false);
   };
@@ -645,9 +651,14 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
 
   const update = async (patch: Partial<CaseData>) => {
     if (!data) return;
-    lastActionTimeRef.current = Date.now();
-    const updated = await MockDb.updateCase(data.id, patch);
-    setData(updated);
+    try {
+        lastActionTimeRef.current = Date.now();
+        const updated = await MockDb.updateCase(data.id, patch);
+        setData(updated);
+    } catch (e) {
+        console.error("Update failed:", e);
+        alert("数据同步失败，请重试");
+    }
   };
 
   const handleDefaultJudgment = () => {
@@ -797,10 +808,14 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
       }
       break;
     case CaseStatus.CROSS_EXAMINATION: 
+    case CaseStatus.CROSS_EXAMINATION_P_DONE:
+    case CaseStatus.CROSS_EXAMINATION_D_DONE:
       title = "质证环节";
       content = <VerdictSection data={data} onSubmit={update} role={role} />;
       break;
     case CaseStatus.DEBATE: 
+    case CaseStatus.DEBATE_P_DONE:
+    case CaseStatus.DEBATE_D_DONE:
       title = "争议焦点辩论";
       content = <DisputeDebateStep data={data} onSubmit={update} userRole={role} />;
       break;
@@ -918,14 +933,25 @@ const App = () => {
   };
 
   const handleJoinCase = async () => {
-    if (!user || !joinCode) return;
+    if (!user) return;
+    if (!joinCode) {
+        alert("请输入案件码");
+        return;
+    }
+    
     setIsJoining(true);
-    const result = await MockDb.joinCase(joinCode, user.id);
-    setIsJoining(false);
-    if (result.success && result.caseId) {
-      setActiveCaseId(result.caseId);
-    } else {
-      alert(result.error || "加入失败");
+    try {
+        const result = await MockDb.joinCase(joinCode, user.id);
+        if (result.success && result.caseId) {
+            setActiveCaseId(result.caseId);
+        } else {
+            alert(result.error || "加入失败");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("加入过程中发生错误");
+    } finally {
+        setIsJoining(false);
     }
   };
 
@@ -1013,9 +1039,14 @@ const App = () => {
                     <input 
                         value={joinCode}
                         onChange={e => setJoinCode(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !isJoining && joinCode.length >= 6) {
+                                handleJoinCase();
+                            }
+                        }}
                         placeholder="输入 6 位案件码"
                         className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-200 uppercase tracking-widest font-mono text-lg text-center font-bold text-slate-700 placeholder:font-normal placeholder:tracking-normal placeholder:text-sm"
-                        maxLength={6}
+                        maxLength={10}
                     />
                     <button 
                         onClick={handleJoinCase}
@@ -1059,9 +1090,23 @@ const App = () => {
                                             {isMyCase ? '我起诉' : '我应诉'}
                                         </span>
                                         <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${
-                                            c.status === CaseStatus.CLOSED ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-600'
+                                            c.status === CaseStatus.CLOSED ? 'bg-slate-100 text-slate-500' : 
+                                            c.status === CaseStatus.ADJUDICATING ? 'bg-amber-100 text-amber-700' :
+                                            c.status === CaseStatus.DEBATE ? 'bg-rose-100 text-rose-700' :
+                                            c.status === CaseStatus.CROSS_EXAMINATION ? 'bg-purple-100 text-purple-700' :
+                                            c.status === CaseStatus.DEFENSE_PENDING ? 'bg-orange-100 text-orange-700' :
+                                            'bg-blue-100 text-blue-700'
                                         }`}>
-                                            {c.status === CaseStatus.CLOSED ? '已结案' : '进行中'}
+                                            {
+                                                c.status === CaseStatus.DRAFTING ? '原告起诉' :
+                                                c.status === CaseStatus.PLAINTIFF_EVIDENCE ? '原告举证' :
+                                                c.status === CaseStatus.DEFENSE_PENDING ? '被告应诉' :
+                                                c.status === CaseStatus.CROSS_EXAMINATION ? '质证' :
+                                                c.status === CaseStatus.DEBATE ? '辩论' :
+                                                c.status === CaseStatus.ADJUDICATING ? 'AI审理' :
+                                                c.status === CaseStatus.CLOSED ? '已结案' :
+                                                '进行中'
+                                            }
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2">

@@ -135,7 +135,7 @@ export const MockDb = {
       // 4. Sync to Local Cache (Map snake_case DB to camelCase App)
       // This ensures the user has the case data locally immediately
       const localCase: CaseData = {
-        id: remoteCase.id,
+        id: String(remoteCase.id),
         shareCode: remoteCase.share_code,
         createdDate: new Date(remoteCase.created_at).getTime(),
         lastUpdateDate: Date.now(),
@@ -155,11 +155,15 @@ export const MockDb = {
         plaintiffRebuttalEvidence: remoteCase.plaintiff_rebuttal_evidence || [], 
         defendantRebuttal: remoteCase.defendant_rebuttal || '',
         defendantRebuttalEvidence: remoteCase.defendant_rebuttal_evidence || [],
-        plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || false,
-        defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || false,
+        plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || 
+            [CaseStatus.CROSS_EXAMINATION_P_DONE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) || false,
+        defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || 
+            [CaseStatus.CROSS_EXAMINATION_D_DONE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) || false,
         disputePoints: remoteCase.dispute_points || [],
-        plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || false,
-        defendantFinishedDebate: remoteCase.defendant_finished_debate || false,
+        plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || 
+            [CaseStatus.DEBATE_P_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) || false,
+        defendantFinishedDebate: remoteCase.defendant_finished_debate || 
+            [CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) || false,
         // FIX: Map last_analyzed_hash
         lastAnalyzedHash: remoteCase.last_analyzed_hash, 
         judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
@@ -250,7 +254,7 @@ export const MockDb = {
 
       // Map snake_case to camelCase
       const localCase: CaseData = {
-        id: remoteCase.id,
+        id: String(remoteCase.id),
         shareCode: remoteCase.share_code,
         createdDate: new Date(remoteCase.created_at).getTime(),
         lastUpdateDate: Date.now(), // Force update timestamp
@@ -271,14 +275,25 @@ export const MockDb = {
         defendantRebuttalEvidence: remoteCase.defendant_rebuttal_evidence || [],
         
         // Fix for button state reverting: Trust local true state if remote is false/null
-        plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || (local && local.plaintiffFinishedCrossExam) || false,
-        defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || (local && local.defendantFinishedCrossExam) || false,
+        // AND check status for implicit completion since columns are missing
+        plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || 
+            [CaseStatus.CROSS_EXAMINATION_P_DONE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) ||
+            (local && local.plaintiffFinishedCrossExam) || false,
+            
+        defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || 
+            [CaseStatus.CROSS_EXAMINATION_D_DONE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) ||
+            (local && local.defendantFinishedCrossExam) || false,
         
         // FIX: Map dispute_points with fallback to local to prevent data loss if column missing/sync fail
         disputePoints: remoteCase.dispute_points || (local && local.disputePoints) || [],
         
-        plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || (local && local.plaintiffFinishedDebate) || false,
-        defendantFinishedDebate: remoteCase.defendant_finished_debate || (local && local.defendantFinishedDebate) || false,
+        plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || 
+            [CaseStatus.DEBATE_P_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) ||
+            (local && local.plaintiffFinishedDebate) || false,
+            
+        defendantFinishedDebate: remoteCase.defendant_finished_debate || 
+            [CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) ||
+            (local && local.defendantFinishedDebate) || false,
 
         // FIX: Map last_analyzed_hash with fallback to local to ensure 'Skip Analysis' logic works
         lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
@@ -302,7 +317,15 @@ export const MockDb = {
 
   // Update a case
   updateCase: async (id: string, updates: Partial<CaseData>): Promise<CaseData> => {
-    const db = getDb();
+    let db = getDb();
+    
+    // Recovery: If not in local DB, try to sync from cloud first
+    if (!db[id]) {
+        console.warn(`Case ${id} not found locally in updateCase, attempting to sync...`);
+        await MockDb.syncCaseFromCloud(id);
+        db = getDb();
+    }
+
     if (!db[id]) throw new Error("Case not found");
     
     // 1. Optimistic Local Update
@@ -324,10 +347,54 @@ export const MockDb = {
         if (updates.defenseSummary !== undefined) payload.defense_summary = updates.defenseSummary;
         if (updates.plaintiffRebuttal !== undefined) payload.plaintiff_rebuttal = updates.plaintiffRebuttal;
         if (updates.defendantRebuttal !== undefined) payload.defendant_rebuttal = updates.defendantRebuttal;
-        if (updates.plaintiffFinishedCrossExam !== undefined) payload.plaintiff_finished_cross_exam = updates.plaintiffFinishedCrossExam;
-        if (updates.defendantFinishedCrossExam !== undefined) payload.defendant_finished_cross_exam = updates.defendantFinishedCrossExam;
-        if (updates.plaintiffFinishedDebate !== undefined) payload.plaintiff_finished_debate = updates.plaintiffFinishedDebate;
-        if (updates.defendantFinishedDebate !== undefined) payload.defendant_finished_debate = updates.defendantFinishedDebate;
+        
+        // Handle Status Transitions for missing columns (Cross Exam)
+        let currentStatus = updates.status || db[id].status;
+        
+        if (updates.plaintiffFinishedCrossExam === true) {
+            if (currentStatus === CaseStatus.CROSS_EXAMINATION) {
+                currentStatus = CaseStatus.CROSS_EXAMINATION_P_DONE;
+                payload.status = currentStatus;
+            } else if (currentStatus === CaseStatus.CROSS_EXAMINATION_D_DONE) {
+                currentStatus = CaseStatus.DEBATE;
+                payload.status = currentStatus;
+            }
+        }
+        
+        if (updates.defendantFinishedCrossExam === true) {
+            if (currentStatus === CaseStatus.CROSS_EXAMINATION) {
+                currentStatus = CaseStatus.CROSS_EXAMINATION_D_DONE;
+                payload.status = currentStatus;
+            } else if (currentStatus === CaseStatus.CROSS_EXAMINATION_P_DONE) {
+                currentStatus = CaseStatus.DEBATE;
+                payload.status = currentStatus;
+            }
+        }
+
+        // Handle Status Transitions for missing columns (Debate)
+        if (updates.plaintiffFinishedDebate === true) {
+            if (currentStatus === CaseStatus.DEBATE) {
+                currentStatus = CaseStatus.DEBATE_P_DONE;
+                payload.status = currentStatus;
+            } else if (currentStatus === CaseStatus.DEBATE_D_DONE) {
+                currentStatus = CaseStatus.ADJUDICATING;
+                payload.status = currentStatus;
+            }
+        }
+
+        if (updates.defendantFinishedDebate === true) {
+            if (currentStatus === CaseStatus.DEBATE) {
+                currentStatus = CaseStatus.DEBATE_D_DONE;
+                payload.status = currentStatus;
+            } else if (currentStatus === CaseStatus.DEBATE_P_DONE) {
+                currentStatus = CaseStatus.ADJUDICATING;
+                payload.status = currentStatus;
+            }
+        }
+
+        // Only add to payload if columns exist (which they don't), so we rely on status.
+        // We DO NOT add plaintiff_finished_cross_exam etc. to payload.
+
         
         // Handle complex objects if column exists and is jsonb
         if (updates.evidence !== undefined) payload.evidence = updates.evidence;
@@ -343,7 +410,8 @@ export const MockDb = {
         if (Object.keys(payload).length > 0) {
             const { error } = await supabase.from('cases').update(payload).eq('id', id);
             if (error) {
-                console.warn("Supabase update failed:", error.message);
+                console.error("Supabase update failed:", error.message);
+                throw new Error("云端同步失败: " + error.message);
             }
         }
     } catch (e) {
@@ -384,11 +452,11 @@ export const MockDb = {
           const remoteIds = new Set<string>();
 
           remoteCases.forEach(remoteCase => {
-              remoteIds.add(remoteCase.id);
+              remoteIds.add(String(remoteCase.id));
               
               // Map snake_case to camelCase
               const localCase: CaseData = {
-                  id: remoteCase.id,
+                  id: String(remoteCase.id),
                   shareCode: remoteCase.share_code,
                   createdDate: new Date(remoteCase.created_at).getTime(),
                   lastUpdateDate: Date.now(),
@@ -407,11 +475,15 @@ export const MockDb = {
                   plaintiffRebuttalEvidence: remoteCase.plaintiff_rebuttal_evidence || [], 
                   defendantRebuttal: remoteCase.defendant_rebuttal || '',
                   defendantRebuttalEvidence: remoteCase.defendant_rebuttal_evidence || [],
-                  plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || false,
-                  defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || false,
+                  plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || 
+                      [CaseStatus.CROSS_EXAMINATION_P_DONE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) || false,
+                  defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || 
+                      [CaseStatus.CROSS_EXAMINATION_D_DONE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) || false,
                   disputePoints: remoteCase.dispute_points || [],
-                  plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || false,
-                  defendantFinishedDebate: remoteCase.defendant_finished_debate || false,
+                  plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || 
+                      [CaseStatus.DEBATE_P_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) || false,
+                  defendantFinishedDebate: remoteCase.defendant_finished_debate || 
+                      [CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) || false,
                   lastAnalyzedHash: remoteCase.last_analyzed_hash, 
                   judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
                   status: remoteCase.status as CaseStatus,
@@ -429,6 +501,8 @@ export const MockDb = {
           Object.keys(db).forEach(id => {
               const c = db[id];
               if ((c.plaintiffId === userId || c.defendantId === userId) && !remoteIds.has(id)) {
+                  // Safeguard: Don't delete cases created < 1 min ago (likely pending sync)
+                  if (Date.now() - c.createdDate < 60000) return;
                   delete db[id];
               }
           });

@@ -4,7 +4,11 @@ export enum CaseStatus {
   PLAINTIFF_EVIDENCE = 'PLAINTIFF_EVIDENCE', // Plaintiff is adding initial evidence
   DEFENSE_PENDING = 'DEFENSE_PENDING', // Waiting for Defendant to join/respond
   CROSS_EXAMINATION = 'CROSS_EXAMINATION', // Both parties can rebut/cross-examine
+  CROSS_EXAMINATION_P_DONE = 'CROSS_EXAMINATION_P_DONE',
+  CROSS_EXAMINATION_D_DONE = 'CROSS_EXAMINATION_D_DONE',
   DEBATE = 'DEBATE', // New: Core dispute focus debate
+  DEBATE_P_DONE = 'DEBATE_P_DONE',
+  DEBATE_D_DONE = 'DEBATE_D_DONE',
   ADJUDICATING = 'ADJUDICATING', // AI is processing
   CLOSED = 'CLOSED', // Verdict delivered
   CANCELLED = 'CANCELLED', // Case cancelled by plaintiff

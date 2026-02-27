@@ -24,7 +24,7 @@ import { VoiceTextarea, EvidenceList, ThreeQualitiesInfo } from './components/Sh
 
 interface VerdictSectionProps {
   data: CaseData;
-  onSubmit: (patch: Partial<CaseData>) => void;
+  onSubmit: (patch: Partial<CaseData>) => Promise<void> | void;
   role: UserRole;
 }
 
@@ -36,6 +36,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   
   // Loading state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -86,7 +87,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
         // ... Skip AI analysis and go directly to Debate.
         // This preserves the user's previous inputs in the Debate phase.
         // Merge extraUpdates (flags) to ensure atomic update
-        onSubmit({ status: CaseStatus.DEBATE, ...extraUpdates });
+        await onSubmit({ status: CaseStatus.DEBATE, ...extraUpdates });
         return;
     }
 
@@ -94,7 +95,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
     
     // First, save any flags if we are entering analysis mode
     if (Object.keys(extraUpdates).length > 0) {
-        onSubmit(extraUpdates);
+        await onSubmit(extraUpdates);
     }
 
     setIsAnalyzing(true);
@@ -121,8 +122,8 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
         clearInterval(timer);
         setProgress(100);
 
-        setTimeout(() => {
-            onSubmit({ 
+        setTimeout(async () => {
+            await onSubmit({ 
                 status: CaseStatus.DEBATE,
                 disputePoints: points,
                 lastAnalyzedHash: currentHash // Save the new fingerprint
@@ -133,6 +134,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
         clearInterval(timer);
         console.error(e);
         setErrorMsg(e.message || "AI 分析遇到问题，请检查网络后重试。");
+        setIsAnalyzing(false);
     }
   };
 
@@ -140,45 +142,69 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   useEffect(() => {
       const bothFinished = data.plaintiffFinishedCrossExam && data.defendantFinishedCrossExam;
       if (bothFinished && data.status === CaseStatus.CROSS_EXAMINATION && !isAnalyzing) {
-          // To avoid race conditions (both clients running AI), only Plaintiff triggers auto-transition.
-          // Defendant can still trigger manually if needed via the button.
-          if (isPlaintiff) {
-              console.log("Auto-triggering phase transition (Plaintiff)...");
-              executePhaseTransition();
-          }
+          // Allow ANY user to trigger transition if both are finished.
+          // The executePhaseTransition function has idempotency checks (lastAnalyzedHash) 
+          // to handle race conditions if both clients trigger simultaneously.
+          console.log("Auto-triggering phase transition (Both finished)...");
+          executePhaseTransition();
       }
   }, [data.plaintiffFinishedCrossExam, data.defendantFinishedCrossExam, data.status]);
 
-  const handleFinishClick = () => {
-      const isMyFinished = isPlaintiff ? data.plaintiffFinishedCrossExam : data.defendantFinishedCrossExam;
-      const isOtherFinished = isPlaintiff ? data.defendantFinishedCrossExam : data.plaintiffFinishedCrossExam;
+  // Auto-generate summaries if missing (Lazy generation)
+  useEffect(() => {
+    const generateSummaries = async () => {
+        // If I am Plaintiff, and I see Defendant's statement is not summarized
+        if (isPlaintiff && data.defenseStatement && !data.defenseSummary) {
+             console.log("Auto-generating defense summary...");
+             const s = await GeminiService.summarizeStatement(data.defenseStatement, "Defendant");
+             if (s) onSubmit({ defenseSummary: s });
+        }
+        
+        // If I am Defendant, and I see Plaintiff's statement is not summarized
+        if (isDefendant && data.description && !data.plaintiffSummary) {
+             console.log("Auto-generating plaintiff summary...");
+             const s = await GeminiService.summarizeStatement(data.description, "Plaintiff");
+             if (s) onSubmit({ plaintiffSummary: s });
+        }
+    };
+    generateSummaries();
+  }, [isPlaintiff, isDefendant, data.defenseStatement, data.defenseSummary, data.description, data.plaintiffSummary]);
 
-      // Case 1: Both finished (Stuck state or just synced) -> Trigger Transition
-      if (isMyFinished && isOtherFinished) {
-          executePhaseTransition();
-          return;
-      }
+  const handleFinishClick = async () => {
+      if (isSubmitting) return;
+      setIsSubmitting(true);
+      try {
+          const isMyFinished = isPlaintiff ? data.plaintiffFinishedCrossExam : data.defendantFinishedCrossExam;
+          const isOtherFinished = isPlaintiff ? data.defendantFinishedCrossExam : data.plaintiffFinishedCrossExam;
 
-      // Case 2: I am finishing now -> Update DB
-      // We only update the flag here. The useEffect above (or the other client) will handle the transition 
-      // once the DB update propagates via Realtime.
-      // However, for better UX (speed), if we KNOW we are the last one, we try to trigger immediately.
-      
-      const updates: Partial<CaseData> = {};
-      if (isPlaintiff) {
-          updates.plaintiffFinishedCrossExam = true;
-          if (data.defendantFinishedCrossExam) {
-             executePhaseTransition(updates);
-          } else {
-             onSubmit(updates);
+          // Case 1: Both finished (Stuck state or just synced) -> Trigger Transition
+          if (isMyFinished && isOtherFinished) {
+              await executePhaseTransition();
+              return;
           }
-      } else if (isDefendant) {
-          updates.defendantFinishedCrossExam = true;
-          if (data.plaintiffFinishedCrossExam) {
-              executePhaseTransition(updates);
-          } else {
-              onSubmit(updates);
+
+          // Case 2: I am finishing now -> Update DB
+          const updates: Partial<CaseData> = {};
+          if (isPlaintiff) {
+              updates.plaintiffFinishedCrossExam = true;
+              if (data.defendantFinishedCrossExam) {
+                  await executePhaseTransition(updates);
+              } else {
+                  await onSubmit(updates);
+              }
+          } else if (isDefendant) {
+              updates.defendantFinishedCrossExam = true;
+              if (data.plaintiffFinishedCrossExam) {
+                  await executePhaseTransition(updates);
+              } else {
+                  await onSubmit(updates);
+              }
           }
+      } catch (e) {
+          console.error(e);
+          alert("提交失败，请重试");
+      } finally {
+          setIsSubmitting(false);
       }
   };
 
@@ -194,7 +220,11 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
           // I have finished
           if (otherStatus) {
               // Both finished
-              return { text: "双方已完成，正在生成争议焦点...", disabled: isAnalyzing, icon: isAnalyzing ? <Loader2 className="animate-spin" size={20}/> : <Swords size={20}/> };
+              return { 
+                  text: isAnalyzing ? "正在生成争议焦点..." : "双方已完成，点击生成争议焦点", 
+                  disabled: isAnalyzing, 
+                  icon: isAnalyzing ? <Loader2 className="animate-spin" size={20}/> : <Swords size={20}/> 
+              };
           } else {
               // Waiting for other
               return { text: `等待${otherRoleName}结束质证...`, disabled: true, icon: <Hourglass className="animate-pulse" size={20}/> };
@@ -381,17 +411,17 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
             
             <button
                 onClick={handleFinishClick}
-                disabled={btnState.disabled || isAnalyzing}
+                disabled={btnState.disabled || isAnalyzing || isSubmitting}
                 className={`w-full py-4 rounded-xl font-bold text-lg shadow-xl transition-all flex items-center justify-center gap-3
-                    ${btnState.disabled 
+                    ${btnState.disabled || isSubmitting
                         ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
                         : 'bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:scale-[1.01] active:scale-[0.99]'
                     }`}
             >
-                {isAnalyzing ? (
+                {isAnalyzing || isSubmitting ? (
                     <>
                        <Loader2 className="animate-spin" />
-                       正在生成争议焦点 ({Math.round(progress)}%)...
+                       {isAnalyzing ? `正在生成争议焦点 (${Math.round(progress)}%)...` : "正在提交..."}
                     </>
                 ) : (
                     <>

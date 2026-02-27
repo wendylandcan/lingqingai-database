@@ -204,7 +204,7 @@ const Auth = ({ onLoginFallback }: { onLoginFallback?: (username: string) => voi
 
   return (
     <div className="min-h-screen bg-rose-50 flex items-center justify-center p-6">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
         {/* App Logo */}
         <div className="relative w-24 h-24 mx-auto mb-6 group flex items-center justify-center">
             <div className="absolute inset-0 bg-rose-200 rounded-full animate-ping opacity-20 group-hover:opacity-40 transition-opacity"></div>
@@ -217,7 +217,7 @@ const Auth = ({ onLoginFallback }: { onLoginFallback?: (username: string) => voi
         </div>
 
         <div className="mb-6 text-center">
-          <p className="text-xl font-black tracking-wide bg-gradient-to-br from-rose-400 via-red-500 to-pink-600 bg-clip-text text-transparent drop-shadow-sm font-cute">
+          <p className="text-lg sm:text-xl font-black bg-gradient-to-br from-rose-400 via-red-500 to-pink-600 bg-clip-text text-transparent drop-shadow-sm font-cute whitespace-nowrap">
             清官爱断家务事，AI 专理意难平
           </p>
         </div>
