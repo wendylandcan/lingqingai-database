@@ -611,8 +611,8 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
   
   const lastActionTimeRef = useRef<number>(0);
 
-  const load = async () => {
-    if (Date.now() - lastActionTimeRef.current < 5000) {
+  const load = async (force: boolean = false) => {
+    if (!force && Date.now() - lastActionTimeRef.current < 5000) {
         return;
     }
 
@@ -632,15 +632,10 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
             event: 'UPDATE',
             schema: 'public',
             table: 'cases',
-            // Removed filter to ensure we receive events, then filter client-side
           },
           (payload: any) => {
-            console.log('Realtime update received!', payload);
-            // Client-side filtering: Check if the update belongs to the current case
-            if (payload.new && payload.new.share_code === caseId) {
-                console.log("是当前案件的更新，开始刷新页面！");
-                load();
-            }
+            console.log('监听到数据库变动，执行全量刷新...', payload);
+            load(true);
           }
         )
         .subscribe();
