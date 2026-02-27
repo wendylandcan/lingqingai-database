@@ -632,11 +632,15 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
             event: 'UPDATE',
             schema: 'public',
             table: 'cases',
-            filter: `share_code=eq.${caseId}`,
+            // Removed filter to ensure we receive events, then filter client-side
           },
-          (payload) => {
+          (payload: any) => {
             console.log('Realtime update received!', payload);
-            load();
+            // Client-side filtering: Check if the update belongs to the current case
+            if (payload.new && payload.new.share_code === caseId) {
+                console.log("是当前案件的更新，开始刷新页面！");
+                load();
+            }
           }
         )
         .subscribe();
