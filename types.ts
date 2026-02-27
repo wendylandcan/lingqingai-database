@@ -6,6 +6,7 @@ export enum CaseStatus {
   CROSS_EXAMINATION = 'CROSS_EXAMINATION', // Both parties can rebut/cross-examine
   CROSS_EXAMINATION_P_DONE = 'CROSS_EXAMINATION_P_DONE',
   CROSS_EXAMINATION_D_DONE = 'CROSS_EXAMINATION_D_DONE',
+  ANALYZING_DISPUTE = 'ANALYZING_DISPUTE', // New: AI is analyzing dispute points
   DEBATE = 'DEBATE', // New: Core dispute focus debate
   DEBATE_P_DONE = 'DEBATE_P_DONE',
   DEBATE_D_DONE = 'DEBATE_D_DONE',

@@ -93,10 +93,8 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
 
     // Otherwise (New case OR Content modified), run AI analysis.
     
-    // First, save any flags if we are entering analysis mode
-    if (Object.keys(extraUpdates).length > 0) {
-        await onSubmit(extraUpdates);
-    }
+    // 1. Enter Analyzing State
+    await onSubmit({ status: CaseStatus.ANALYZING_DISPUTE, ...extraUpdates });
 
     setIsAnalyzing(true);
     setProgress(0);
@@ -329,6 +327,37 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
     }
     return null;
   };
+
+  if (data.status === CaseStatus.ANALYZING_DISPUTE) {
+      return (
+          <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+              <div className="mb-8 relative">
+                  <div className="absolute inset-0 bg-purple-100 rounded-full animate-ping opacity-20"></div>
+                  <div className="bg-white p-6 rounded-full shadow-xl border border-purple-100 relative z-10">
+                      <Scale size={48} className="text-purple-600 animate-pulse" />
+                  </div>
+              </div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-2 font-cute">法官正在分析争议焦点</h2>
+              <p className="text-slate-500 mb-8 max-w-md">AI 法官正在仔细阅读双方的陈述与证据，为您提炼核心争议点... (预计 30 秒)</p>
+              
+              {errorMsg && (
+                  <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg flex items-center gap-2 text-sm max-w-md animate-fade-in">
+                      <AlertOctagon size={16}/> {errorMsg}
+                      <button onClick={() => executePhaseTransition()} className="ml-auto underline font-bold hover:text-red-800">重试</button>
+                  </div>
+              )}
+
+              <div className="w-full max-w-md bg-slate-100 rounded-full h-3 overflow-hidden mb-4">
+                   {isAnalyzing ? (
+                        <div className="bg-purple-600 h-full rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                    ) : (
+                        <div className="bg-purple-600 h-full rounded-full animate-pulse w-full opacity-50"></div>
+                    )}
+              </div>
+              <p className="text-xs text-slate-400">请勿关闭页面</p>
+          </div>
+      );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in max-w-4xl mx-auto pb-24 md:pb-0">

@@ -50,6 +50,48 @@ import {
 import { supabase } from './supabaseClient';
 import Auth from './components/Auth';
 
+export class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-slate-50">
+          <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-red-100 animate-fade-in">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertOctagon size={32} className="text-red-500" />
+            </div>
+            <h1 className="text-xl font-bold text-slate-800 mb-2">应用程序遇到错误</h1>
+            <p className="text-slate-500 text-sm mb-6">很抱歉，发生了一个意外错误。请尝试刷新页面。</p>
+            <div className="bg-slate-50 p-4 rounded-lg text-left text-xs font-mono text-slate-600 overflow-auto max-h-40 mb-6 border border-slate-200">
+              {this.state.error?.message || "Unknown Error"}
+            </div>
+            <button 
+                onClick={() => window.location.reload()}
+                className="w-full bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-colors flex items-center justify-center gap-2"
+            >
+                <RefreshCw size={16} /> 刷新页面
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const FilingForm = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Partial<CaseData>) => Promise<void> | void }) => {
   const [desc, setDesc] = useState(data.description);
   const [demands, setDemands] = useState(data.demands);
@@ -823,6 +865,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
     case CaseStatus.CROSS_EXAMINATION: 
     case CaseStatus.CROSS_EXAMINATION_P_DONE:
     case CaseStatus.CROSS_EXAMINATION_D_DONE:
+    case CaseStatus.ANALYZING_DISPUTE:
       title = "质证环节";
       content = <VerdictSection data={data} onSubmit={update} role={role} />;
       break;

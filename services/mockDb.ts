@@ -277,11 +277,11 @@ export const MockDb = {
         // Fix for button state reverting: Trust local true state if remote is false/null
         // AND check status for implicit completion since columns are missing
         plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || 
-            [CaseStatus.CROSS_EXAMINATION_P_DONE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) ||
+            [CaseStatus.CROSS_EXAMINATION_P_DONE, CaseStatus.ANALYZING_DISPUTE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) ||
             (local && local.plaintiffFinishedCrossExam) || false,
             
         defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || 
-            [CaseStatus.CROSS_EXAMINATION_D_DONE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) ||
+            [CaseStatus.CROSS_EXAMINATION_D_DONE, CaseStatus.ANALYZING_DISPUTE, CaseStatus.DEBATE, CaseStatus.DEBATE_P_DONE, CaseStatus.DEBATE_D_DONE, CaseStatus.ADJUDICATING, CaseStatus.CLOSED].includes(remoteCase.status) ||
             (local && local.defendantFinishedCrossExam) || false,
         
         // FIX: Map dispute_points with fallback to local to prevent data loss if column missing/sync fail
@@ -356,7 +356,7 @@ export const MockDb = {
                 currentStatus = CaseStatus.CROSS_EXAMINATION_P_DONE;
                 payload.status = currentStatus;
             } else if (currentStatus === CaseStatus.CROSS_EXAMINATION_D_DONE) {
-                currentStatus = CaseStatus.DEBATE;
+                currentStatus = CaseStatus.ANALYZING_DISPUTE;
                 payload.status = currentStatus;
             }
         }
@@ -366,7 +366,7 @@ export const MockDb = {
                 currentStatus = CaseStatus.CROSS_EXAMINATION_D_DONE;
                 payload.status = currentStatus;
             } else if (currentStatus === CaseStatus.CROSS_EXAMINATION_P_DONE) {
-                currentStatus = CaseStatus.DEBATE;
+                currentStatus = CaseStatus.ANALYZING_DISPUTE;
                 payload.status = currentStatus;
             }
         }
