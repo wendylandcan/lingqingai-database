@@ -102,6 +102,8 @@ export interface CaseData {
   
   // State Tracking
   lastAnalyzedHash?: string; // Fingerprint of content when disputePoints were last generated
+  verdictInputHashByJudge?: Partial<Record<JudgePersona, string>>;
+  cachedVerdictsByJudge?: Partial<Record<JudgePersona, Verdict>>;
 
   judgePersona: JudgePersona;
   status: CaseStatus;

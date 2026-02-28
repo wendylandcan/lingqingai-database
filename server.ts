@@ -3,6 +3,7 @@ import cors from 'cors';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import 'dotenv/config';
 
 const app = express();
 // Port configuration moved to bottom

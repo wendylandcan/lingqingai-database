@@ -22,6 +22,7 @@ import {
 } from './types';
 import * as GeminiService from './services/geminiService';
 import { VoiceTextarea, EvidenceList, ThreeQualitiesInfo } from './components/Shared';
+import { buildDebateInputHash } from './services/caseHash';
 
 interface VerdictSectionProps {
   data: CaseData;
@@ -61,25 +62,8 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
     handleUpdate({ defendantEvidence: updated });
   };
 
-  // Helper: Generate a "fingerprint" of the current case content that affects the AI analysis
-  const computeContentHash = () => {
-    // We combine all fields that the AI reads to generate dispute points.
-    // If any of these change, the hash changes.
-    const relevantContent = {
-        desc: data.description,
-        defStmt: data.defenseStatement,
-        plReb: data.plaintiffRebuttal, // Note: Use data.* not local state to ensure sync
-        defReb: data.defendantRebuttal || "",
-        // For evidence, we track ID, description and contested status.
-        // We assume IDs are unique and description changes capture edits.
-        ev: data.evidence.map(e => `${e.id}-${e.description}-${e.isContested}`).join('|'),
-        defEv: data.defendantEvidence.map(e => `${e.id}-${e.description}-${e.isContested}`).join('|')
-    };
-    return JSON.stringify(relevantContent);
-  };
-
   const executePhaseTransition = async (extraUpdates: Partial<CaseData> = {}) => {
-    const currentHash = computeContentHash();
+    const currentHash = buildDebateInputHash(data);
     const hasDisputePoints = data.disputePoints && data.disputePoints.length > 0;
     
     // CONDITION CHECK:
