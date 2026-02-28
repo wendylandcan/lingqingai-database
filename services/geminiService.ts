@@ -1,10 +1,10 @@
 
-import { GoogleGenAI } from "@google/genai";
+// import { GoogleGenAI } from "@google/genai"; // Removed for backend proxy
 import { JudgePersona, Verdict, EvidenceItem, SentimentResult, FactCheckResult, DisputePoint, EvidenceType } from "../types";
 
 // --- Initialize Client ---
-// Use process.env.API_KEY directly as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Client-side SDK initialization removed. API calls are now proxied through the backend.
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); 
 
 // --- Model Constants ---
 // Upgraded to Gemini 3 series as per latest guidelines and to potentially alleviate 2.0 flash quota issues
@@ -106,40 +106,38 @@ async function callGemini(params: {
 
   try {
     return await retryWithBackoff(async () => {
-      const config: any = {
-        systemInstruction: params.systemInstruction,
-        temperature: params.temperature ?? 0.7, // Default to 0.7 as requested
-      };
+      // Use relative path since we are proxying in dev or same origin in prod
+      // If VITE_API_BASE_URL is set, use it (for separate backend deployment)
+      const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+      const API_URL = `${API_BASE}/api/generate-summary`;
 
-      if (params.jsonMode) {
-        config.responseMimeType = "application/json";
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(params),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+           const errorData = await response.json().catch(() => ({}));
+           throw new Error(errorData.error || `HTTP Error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.text || "";
+
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        throw error;
       }
-
-      let contentsInput: any;
-      if (params.images && params.images.length > 0) {
-        contentsInput = {
-          parts: [
-            { text: params.prompt },
-            ...params.images
-          ]
-        };
-      } else {
-        contentsInput = params.prompt;
-      }
-
-      const apiPromise = ai.models.generateContent({
-        model: params.model,
-        contents: contentsInput,
-        config: config
-      });
-
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out")), TIMEOUT_MS)
-      );
-
-      const response: any = await Promise.race([apiPromise, timeoutPromise]);
-
-      return response.text || "";
     });
   } catch (error: any) {
     console.error("Gemini API Error:", error);

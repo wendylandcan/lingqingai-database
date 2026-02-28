@@ -4,20 +4,26 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
+    "start": "NODE_ENV=production tsx server.ts",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "openai": "^4.0.0",
-    "lucide-react": "^0.563.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
     "@google/genai": "latest",
     "@supabase/supabase-js": "2",
-    "react-markdown": "9"
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "lucide-react": "^0.563.0",
+    "openai": "^4.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-markdown": "9",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
