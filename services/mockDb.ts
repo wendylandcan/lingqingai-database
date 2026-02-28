@@ -1,7 +1,6 @@
 
 import { CaseData, CaseStatus, JudgePersona } from "../types";
 import { supabase } from '../supabaseClient';
-import { buildDebateInputHash, buildVerdictInputHash } from "./caseHash";
 
 const DB_KEY = 'court_of_love_db_v1';
 
@@ -17,26 +16,6 @@ const getDb = (): Record<string, CaseData> => {
 
 const saveDb = (db: Record<string, CaseData>) => {
   localStorage.setItem(DB_KEY, JSON.stringify(db));
-};
-
-const STATUS_ORDER: Record<CaseStatus, number> = {
-  [CaseStatus.DRAFTING]: 0,
-  [CaseStatus.PLAINTIFF_EVIDENCE]: 1,
-  [CaseStatus.DEFENSE_PENDING]: 2,
-  [CaseStatus.CROSS_EXAMINATION]: 3,
-  [CaseStatus.CROSS_EXAMINATION_P_DONE]: 3,
-  [CaseStatus.CROSS_EXAMINATION_D_DONE]: 3,
-  [CaseStatus.ANALYZING_DISPUTE]: 4,
-  [CaseStatus.DEBATE]: 5,
-  [CaseStatus.DEBATE_P_DONE]: 5,
-  [CaseStatus.DEBATE_D_DONE]: 5,
-  [CaseStatus.ADJUDICATING]: 6,
-  [CaseStatus.CLOSED]: 7,
-  [CaseStatus.CANCELLED]: 99
-};
-
-const earlierPhase = (a: CaseStatus, b: CaseStatus): CaseStatus => {
-  return STATUS_ORDER[a] <= STATUS_ORDER[b] ? a : b;
 };
 
 export const MockDb = {
@@ -68,8 +47,6 @@ export const MockDb = {
       disputePoints: [], // Initialize empty dispute points
       plaintiffFinishedDebate: false,
       defendantFinishedDebate: false,
-      verdictInputHashByJudge: {},
-      cachedVerdictsByJudge: {},
       judgePersona: JudgePersona.BORDER_COLLIE, // Default to Border Collie
       status: CaseStatus.DRAFTING
     };
@@ -111,9 +88,7 @@ export const MockDb = {
   // Get all cases relevant to a user
   getCasesForUser: (userId: string): CaseData[] => {
     const db = getDb();
-    return Object.values(db)
-      .filter(c => c.plaintiffId === userId || c.defendantId === userId)
-      .sort((a, b) => a.lastUpdateDate - b.lastUpdateDate);
+    return Object.values(db).filter(c => c.plaintiffId === userId || c.defendantId === userId).sort((a, b) => b.lastUpdateDate - a.lastUpdateDate);
   },
 
   // Join a case via code
@@ -188,8 +163,6 @@ export const MockDb = {
         defendantFinishedDebate: remoteCase.defendant_finished_debate || false,
         // FIX: Map last_analyzed_hash
         lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
-        verdictInputHashByJudge: (local && local.verdictInputHashByJudge) || {},
-        cachedVerdictsByJudge: (local && local.cachedVerdictsByJudge) || {},
         judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
         status: remoteCase.status as CaseStatus,
         verdict: remoteCase.verdict
@@ -239,8 +212,54 @@ export const MockDb = {
         return local || null;
       }
 
-      // Rollback strategy: always trust latest cloud status for phase sync.
-      // This enables "就低不就高" when two ends choose different rollback targets.
+      // --- CONFLICT RESOLUTION LOGIC ---
+      // Check if the local status is "ahead" of the remote status. 
+      if (local && local.status) {
+          const statusOrder = {
+            [CaseStatus.DRAFTING]: 0,
+            [CaseStatus.PLAINTIFF_EVIDENCE]: 1,
+            [CaseStatus.DEFENSE_PENDING]: 2,
+            [CaseStatus.CROSS_EXAMINATION]: 3,
+            [CaseStatus.DEBATE]: 4,
+            [CaseStatus.ADJUDICATING]: 5,
+            [CaseStatus.CLOSED]: 6,
+            [CaseStatus.CANCELLED]: 99
+          };
+          
+          const localS = local.status as CaseStatus;
+          const remoteS = remoteCase.status as CaseStatus;
+          const localLevel = statusOrder[localS] || 0;
+          const remoteLevel = statusOrder[remoteS] || 0;
+
+          // Stability Logic: Prevent regression for critical states
+          
+          // 1. Default Judgment Protection:
+          if (localS === CaseStatus.ADJUDICATING && remoteLevel < 5) {
+             console.log(`[Sync] Ignoring stale remote data (Lagging Default Judgment). Local: ADJUDICATING > Remote: ${remoteS}`);
+             return local;
+          }
+
+          // 2. Verdict Protection:
+          if (localS === CaseStatus.CLOSED && remoteLevel < 6) {
+              console.log(`[Sync] Ignoring stale remote data (Lagging Verdict). Local: CLOSED > Remote: ${remoteS}`);
+              return local;
+          }
+
+          // 3. General Forward Progress (Debate Phase):
+          if (localS === CaseStatus.DEBATE && remoteLevel < 4) {
+              console.log(`[Sync] Ignoring stale remote data (Lagging Debate). Local: DEBATE > Remote: ${remoteS}`);
+              return local;
+          }
+
+          // 4. Appeal Protection (Appeal from Closed -> Adjudicating/Debate)
+          // If we locally moved BACKWARDS (e.g., from Closed to Debate), and remote is still Closed (ahead),
+          // we should trust Local (user intent) over Remote (stale state).
+          if ((localS === CaseStatus.ADJUDICATING || localS === CaseStatus.DEBATE) && remoteLevel === 6) {
+               console.log(`[Sync] Ignoring remote data (Appeal/Back Action). Local: ${localS} < Remote: CLOSED`);
+               return local;
+          }
+      }
+      // ---------------------------------
 
       // Map snake_case to camelCase
       const localCase: CaseData = {
@@ -276,8 +295,6 @@ export const MockDb = {
 
         // FIX: Map last_analyzed_hash with fallback to local to ensure 'Skip Analysis' logic works
         lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
-        verdictInputHashByJudge: (local && local.verdictInputHashByJudge) || {},
-        cachedVerdictsByJudge: (local && local.cachedVerdictsByJudge) || {},
 
         judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
         status: remoteCase.status as CaseStatus,
@@ -301,31 +318,8 @@ export const MockDb = {
     const db = getDb();
     if (!db[id]) throw new Error("Case not found");
     
-    const previousCase = db[id];
     // 1. Optimistic Local Update
-    const updatedCase = { ...previousCase, ...updates, lastUpdateDate: Date.now() };
-
-    // Smart cache invalidation: if pre-debate content changed, dispute points are stale.
-    const debateHashBefore = buildDebateInputHash(previousCase);
-    const debateHashAfter = buildDebateInputHash(updatedCase);
-    const debateChanged = debateHashBefore !== debateHashAfter;
-    if (debateChanged) {
-      updatedCase.lastAnalyzedHash = undefined;
-      updatedCase.disputePoints = [];
-      updatedCase.plaintiffFinishedDebate = false;
-      updatedCase.defendantFinishedDebate = false;
-    }
-
-    // Smart cache invalidation: if any verdict input changed, cached verdicts are stale.
-    const verdictHashBefore = buildVerdictInputHash(previousCase);
-    const verdictHashAfter = buildVerdictInputHash(updatedCase);
-    const verdictChanged = verdictHashBefore !== verdictHashAfter;
-    if (verdictChanged) {
-      updatedCase.verdict = undefined;
-      updatedCase.verdictInputHashByJudge = {};
-      updatedCase.cachedVerdictsByJudge = {};
-    }
-
+    const updatedCase = { ...db[id], ...updates, lastUpdateDate: Date.now() };
     db[id] = updatedCase;
     saveDb(db);
 
@@ -336,7 +330,7 @@ export const MockDb = {
         // Map fields to DB columns (snake_case)
         if (updates.description !== undefined) payload.description = updates.description;
         if (updates.demands !== undefined) payload.demands = updates.demands;
-        if (updates.status !== undefined || previousCase.status !== updatedCase.status) payload.status = updatedCase.status;
+        if (updates.status !== undefined) payload.status = updates.status;
         if (updates.title !== undefined) payload.title = updates.title;
         if (updates.plaintiffSummary !== undefined) payload.plaintiff_summary = updates.plaintiffSummary;
         if (updates.defenseStatement !== undefined) payload.defense_statement = updates.defenseStatement;
@@ -345,25 +339,19 @@ export const MockDb = {
         if (updates.defendantRebuttal !== undefined) payload.defendant_rebuttal = updates.defendantRebuttal;
         if (updates.plaintiffFinishedCrossExam !== undefined) payload.plaintiff_finished_cross_exam = updates.plaintiffFinishedCrossExam;
         if (updates.defendantFinishedCrossExam !== undefined) payload.defendant_finished_cross_exam = updates.defendantFinishedCrossExam;
-        if (updates.plaintiffFinishedDebate !== undefined || previousCase.plaintiffFinishedDebate !== updatedCase.plaintiffFinishedDebate) {
-          payload.plaintiff_finished_debate = updatedCase.plaintiffFinishedDebate;
-        }
-        if (updates.defendantFinishedDebate !== undefined || previousCase.defendantFinishedDebate !== updatedCase.defendantFinishedDebate) {
-          payload.defendant_finished_debate = updatedCase.defendantFinishedDebate;
-        }
+        if (updates.plaintiffFinishedDebate !== undefined) payload.plaintiff_finished_debate = updates.plaintiffFinishedDebate;
+        if (updates.defendantFinishedDebate !== undefined) payload.defendant_finished_debate = updates.defendantFinishedDebate;
         
         // Handle complex objects if column exists and is jsonb
         if (updates.evidence !== undefined) payload.evidence = updates.evidence;
         if (updates.defendantEvidence !== undefined) payload.defendant_evidence = updates.defendantEvidence;
         
         // FIX: Ensure disputePoints are synced to cloud
-        if (updates.disputePoints !== undefined || debateChanged) payload.dispute_points = updatedCase.disputePoints;
+        if (updates.disputePoints !== undefined) payload.dispute_points = updates.disputePoints;
         // FIX: Ensure lastAnalyzedHash is synced to cloud
-        if (updates.lastAnalyzedHash !== undefined || previousCase.lastAnalyzedHash !== updatedCase.lastAnalyzedHash) {
-          payload.last_analyzed_hash = updatedCase.lastAnalyzedHash ?? null;
-        }
+        if (updates.lastAnalyzedHash !== undefined) payload.last_analyzed_hash = updates.lastAnalyzedHash;
 
-        if (updates.verdict !== undefined || verdictChanged) payload.verdict = updatedCase.verdict ?? null;
+        if (updates.verdict !== undefined) payload.verdict = updates.verdict;
         if (updates.judgePersona !== undefined) payload.judge_persona = updates.judgePersona;
         if (updates.defendantId !== undefined) payload.defendant_id = updates.defendantId;
 
@@ -380,43 +368,6 @@ export const MockDb = {
     }
 
     return updatedCase;
-  },
-
-  // Rollback with "lower phase wins" rule across both ends.
-  requestPhaseRollback: async (id: string, targetStatus: CaseStatus): Promise<CaseData> => {
-    const db = getDb();
-    const localCase = db[id];
-    if (!localCase) throw new Error("Case not found");
-
-    let effectiveTarget = targetStatus;
-
-    try {
-      const { data: remoteCase } = await supabase
-        .from('cases')
-        .select('status')
-        .eq('share_code', localCase.shareCode)
-        .single();
-
-      if (remoteCase?.status) {
-        effectiveTarget = earlierPhase(targetStatus, remoteCase.status as CaseStatus);
-      }
-    } catch (e) {
-      // If remote query fails, continue with local target.
-      console.warn("Rollback phase sync check failed, using local target:", e);
-    }
-
-    const rollbackPatch: Partial<CaseData> = {
-      status: effectiveTarget,
-      plaintiffFinishedDebate: false,
-      defendantFinishedDebate: false
-    };
-
-    if (effectiveTarget === CaseStatus.CROSS_EXAMINATION || effectiveTarget === CaseStatus.DEFENSE_PENDING) {
-      rollbackPatch.plaintiffFinishedCrossExam = false;
-      rollbackPatch.defendantFinishedCrossExam = false;
-    }
-
-    return MockDb.updateCase(id, rollbackPatch);
   },
 
   // Sync all cases for a user from Cloud (for list view)
@@ -462,8 +413,6 @@ export const MockDb = {
                 plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || (local && local.plaintiffFinishedDebate) || false,
                 defendantFinishedDebate: remoteCase.defendant_finished_debate || (local && local.defendantFinishedDebate) || false,
                 lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
-                verdictInputHashByJudge: (local && local.verdictInputHashByJudge) || {},
-                cachedVerdictsByJudge: (local && local.cachedVerdictsByJudge) || {},
                 judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
                 status: remoteCase.status as CaseStatus,
                 verdict: remoteCase.verdict

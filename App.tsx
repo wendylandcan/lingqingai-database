@@ -39,7 +39,6 @@ import {
 } from './types';
 import * as GeminiService from './services/geminiService';
 import { MockDb } from './services/mockDb';
-import { buildVerdictInputHash } from './services/caseHash';
 import { VerdictSection } from './VerdictSection';
 import { 
   ConfirmDialog, 
@@ -328,20 +327,6 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
   const [progress, setProgress] = useState(0);
 
   const handleJudgement = async () => {
-    const verdictInputHash = buildVerdictInputHash(data);
-    const cachedHash = data.verdictInputHashByJudge?.[persona];
-    const cachedVerdict = data.cachedVerdictsByJudge?.[persona];
-
-    // Smart cache hit: unchanged inputs + same judge => reuse cached verdict.
-    if (cachedHash && cachedVerdict && cachedHash === verdictInputHash) {
-      onSubmit({
-        verdict: cachedVerdict,
-        judgePersona: persona,
-        status: CaseStatus.CLOSED
-      });
-      return;
-    }
-
     setIsDeliberating(true);
     setProgress(0);
     
@@ -368,22 +353,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
       setProgress(100);
 
       setTimeout(() => {
-          const verdictInputHashByJudge = {
-            ...(data.verdictInputHashByJudge || {}),
-            [persona]: verdictInputHash
-          };
-          const cachedVerdictsByJudge = {
-            ...(data.cachedVerdictsByJudge || {}),
-            [persona]: verdict
-          };
-
-          onSubmit({
-            verdict,
-            judgePersona: persona,
-            status: CaseStatus.CLOSED,
-            verdictInputHashByJudge,
-            cachedVerdictsByJudge
-          });
+          onSubmit({ verdict, judgePersona: persona, status: CaseStatus.CLOSED });
       }, 500);
     } catch (e) { 
         clearInterval(timer);
@@ -496,21 +466,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
   );
 };
 
-const VerdictView = ({
-  verdict,
-  persona,
-  onReset,
-  onAppeal,
-  onRollbackToDebate,
-  onRollbackToCrossExam
-}: {
-  verdict: Verdict,
-  persona: JudgePersona,
-  onReset: () => void,
-  onAppeal: () => void,
-  onRollbackToDebate: () => void,
-  onRollbackToCrossExam: () => void
-}) => {
+const VerdictView = ({ verdict, persona, onReset, onAppeal }: { verdict: Verdict, persona: JudgePersona, onReset: () => void, onAppeal: () => void }) => {
   const isCat = persona === JudgePersona.CAT;
   const headerClass = isCat ? 'bg-rose-400' : 'bg-slate-800';
   
@@ -652,8 +608,6 @@ const VerdictView = ({
       <div className="space-y-3 pt-2 font-sans">
         <button onClick={onReset} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl">结案，新案件</button>
         <button onClick={onAppeal} className="w-full bg-white text-rose-600 border-2 border-rose-100 font-bold py-3 rounded-xl">不服判决？换法官重审</button>
-        <button onClick={onRollbackToDebate} className="w-full bg-white text-indigo-600 border-2 border-indigo-100 font-bold py-3 rounded-xl">回退到辩论阶段</button>
-        <button onClick={onRollbackToCrossExam} className="w-full bg-white text-amber-700 border-2 border-amber-100 font-bold py-3 rounded-xl">回退到质证阶段</button>
       </div>
     </div>
   )
@@ -732,18 +686,6 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
     setData(updated);
   };
 
-  const rollbackTo = async (targetStatus: CaseStatus, extraPatch?: Partial<CaseData>) => {
-    if (!data) return;
-    lastActionTimeRef.current = Date.now();
-    const rolledBack = await MockDb.requestPhaseRollback(data.id, targetStatus);
-    if (extraPatch) {
-      const updated = await MockDb.updateCase(rolledBack.id, extraPatch);
-      setData(updated);
-      return;
-    }
-    setData(rolledBack);
-  };
-
   const handleDefaultJudgment = () => {
     update({ 
       defenseStatement: "（被告缺席，放弃答辩）",
@@ -791,20 +733,36 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
     }
 
     if (data.status === CaseStatus.DEBATE) {
-        rollbackTo(CaseStatus.CROSS_EXAMINATION);
+        // Unconditionally reset both user flags when stepping back from DEBATE to CROSS_EXAMINATION.
+        // This ensures that re-entering DEBATE requires explicit confirmation ("Finish") from BOTH parties again.
+        // This also fixes the bug where users could get stuck in "Both sides finished" state without transitioning.
+        update({ 
+            status: CaseStatus.CROSS_EXAMINATION,
+            plaintiffFinishedDebate: false,
+            defendantFinishedDebate: false,
+            plaintiffFinishedCrossExam: false,
+            defendantFinishedCrossExam: false
+        });
         return;
     }
 
     if (data.status === CaseStatus.ADJUDICATING) {
         if (data.defenseStatement === "（被告缺席，放弃答辩）") {
-             rollbackTo(CaseStatus.DEFENSE_PENDING, {
-               defenseStatement: "",
-               defenseSummary: undefined
+             update({ 
+                 status: CaseStatus.DEFENSE_PENDING,
+                 defenseStatement: "", 
+                 defenseSummary: undefined 
              });
              return;
         }
 
-        rollbackTo(CaseStatus.DEBATE);
+        update({ 
+            status: CaseStatus.DEBATE,
+            disputePoints: data.disputePoints,
+            // Reset flags so they can debate again
+            plaintiffFinishedDebate: false,
+            defendantFinishedDebate: false
+        });
         return;
     }
 
@@ -898,9 +856,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
                 status: CaseStatus.ADJUDICATING,
                 disputePoints: data.disputePoints
             });
-        }}
-        onRollbackToDebate={() => rollbackTo(CaseStatus.DEBATE)}
-        onRollbackToCrossExam={() => rollbackTo(CaseStatus.CROSS_EXAMINATION)}
+        }} 
       />;
       break;
     case CaseStatus.CANCELLED:
