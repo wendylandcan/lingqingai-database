@@ -228,6 +228,15 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
     
     const btnState = getButtonState();
 
+    // Fix: Auto-transition if both parties are finished but status is still DEBATE
+    // This handles race conditions where the second party's update didn't trigger the status change
+    useEffect(() => {
+        if (data.plaintiffFinishedDebate && data.defendantFinishedDebate && data.status === CaseStatus.DEBATE) {
+            console.log("Auto-triggering phase transition (Both finished)...");
+            onSubmit({ status: CaseStatus.ADJUDICATING });
+        }
+    }, [data.plaintiffFinishedDebate, data.defendantFinishedDebate, data.status]);
+
     return (
         <div className="space-y-6 animate-fade-in">
             <div className="bg-purple-50 border border-purple-200 p-6 rounded-xl text-center">
@@ -824,6 +833,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
       }
       break;
     case CaseStatus.CROSS_EXAMINATION: 
+    case CaseStatus.ANALYZING_DISPUTE:
       title = "质证环节";
       content = <VerdictSection data={data} onSubmit={update} role={role} />;
       break;
@@ -923,13 +933,20 @@ const App = () => {
   // Load cases
   useEffect(() => {
     if (user) {
-      const cases = MockDb.getCasesForUser(user.id);
-      setMyCases(cases);
+      // 1. Initial load from local cache
+      setMyCases(MockDb.getCasesForUser(user.id));
       
+      // 2. Sync from cloud immediately
+      MockDb.syncUserCases(user.id).then(() => {
+          setMyCases(MockDb.getCasesForUser(user.id));
+      });
+      
+      // 3. Poll for updates (including deletions)
       const interval = setInterval(() => {
-         const updated = MockDb.getCasesForUser(user.id);
-         setMyCases(updated);
-      }, 3000); // Poll for updates in list view
+         MockDb.syncUserCases(user.id).then(() => {
+             setMyCases(MockDb.getCasesForUser(user.id));
+         });
+      }, 4000); 
       return () => clearInterval(interval);
     }
   }, [user, activeCaseId]);
@@ -959,7 +976,7 @@ const App = () => {
 
   const confirmDeleteCase = async () => {
       if (caseToDelete) {
-          MockDb.deleteCase(caseToDelete);
+          await MockDb.deleteCase(caseToDelete);
           setMyCases(prev => prev.filter(c => c.id !== caseToDelete));
           setCaseToDelete(null);
       }
@@ -1035,9 +1052,14 @@ const App = () => {
                 <div className="flex flex-col gap-3">
                     <input 
                         value={joinCode}
-                        onChange={e => setJoinCode(e.target.value)}
-                        placeholder="输入 6 位案件码"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-200 uppercase tracking-widest font-mono text-lg text-center font-bold text-slate-700 placeholder:font-normal placeholder:tracking-normal placeholder:text-sm"
+                        onChange={e => {
+                          const val = e.target.value.replace(/\D/g, '');
+                          setJoinCode(val);
+                        }}
+                        placeholder="输入 6 位数字案件码"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-200 tracking-widest font-mono text-lg text-center font-bold text-slate-700 placeholder:font-normal placeholder:tracking-normal placeholder:text-sm"
                         maxLength={6}
                     />
                     <button 

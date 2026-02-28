@@ -96,10 +96,11 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, ini
 async function callGemini(params: {
   model: string;
   systemInstruction?: string;
-  prompt: string;
+  prompt?: string;
   temperature?: number;
   jsonMode?: boolean;
   images?: { inlineData: { data: string, mimeType: string } }[];
+  contents?: any;
 }): Promise<string> {
   // Add a 120s timeout to prevent hanging UI (Increased from 45s)
   const TIMEOUT_MS = 120000;
@@ -156,11 +157,9 @@ async function callGemini(params: {
 
 export const transcribeAudio = async (base64Audio: string, mimeType: string): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
+    const res = await callGemini({
       model: GEMINI_MODEL_FLASH,
-      config: {
-        systemInstruction: `You are an expert transcriber. Filter out fillers. Add punctuation.`
-      },
+      systemInstruction: `You are an expert transcriber. Filter out fillers. Add punctuation.`,
       contents: {
         parts: [
           { inlineData: { mimeType: mimeType, data: base64Audio } },
@@ -168,7 +167,7 @@ export const transcribeAudio = async (base64Audio: string, mimeType: string): Pr
         ],
       },
     });
-    return response.text?.trim() || "";
+    return res.trim() || "";
   } catch (error) {
     console.error("Transcription Error", error);
     return "（语音转录失败，请重试）";

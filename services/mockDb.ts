@@ -4,9 +4,9 @@ import { supabase } from '../supabaseClient';
 
 const DB_KEY = 'court_of_love_db_v1';
 
-// Helper to generate a random 6-character code
+// Helper to generate a random 6-digit number
 const generateCode = () => {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 const getDb = (): Record<string, CaseData> => {
@@ -370,9 +370,96 @@ export const MockDb = {
     return updatedCase;
   },
 
+  // Sync all cases for a user from Cloud (for list view)
+  syncUserCases: async (userId: string): Promise<void> => {
+    try {
+      const { data: remoteCases, error } = await supabase
+        .from('cases')
+        .select('*')
+        .or(`plaintiff_id.eq.${userId},defendant_id.eq.${userId}`);
+
+      if (error) throw error;
+
+      if (remoteCases) {
+        const db = getDb();
+        const remoteIds = new Set(remoteCases.map(c => c.id));
+        
+        // 1. Update/Insert remote cases to local
+        remoteCases.forEach(remoteCase => {
+            const local = db[remoteCase.id];
+            const localCase: CaseData = {
+                id: remoteCase.id,
+                shareCode: remoteCase.share_code,
+                createdDate: new Date(remoteCase.created_at).getTime(),
+                lastUpdateDate: Date.now(),
+                plaintiffId: remoteCase.plaintiff_id,
+                defendantId: remoteCase.defendant_id,
+                category: remoteCase.category,
+                description: remoteCase.description || '',
+                title: remoteCase.title,
+                plaintiffSummary: remoteCase.plaintiff_summary,
+                demands: remoteCase.demands || '',
+                evidence: remoteCase.evidence || [],
+                defenseStatement: remoteCase.defense_statement || '',
+                defenseSummary: remoteCase.defense_summary,
+                defendantEvidence: remoteCase.defendant_evidence || [],
+                plaintiffRebuttal: remoteCase.plaintiff_rebuttal || '',
+                plaintiffRebuttalEvidence: remoteCase.plaintiff_rebuttal_evidence || [], 
+                defendantRebuttal: remoteCase.defendant_rebuttal || '',
+                defendantRebuttalEvidence: remoteCase.defendant_rebuttal_evidence || [],
+                plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || (local && local.plaintiffFinishedCrossExam) || false,
+                defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || (local && local.defendantFinishedCrossExam) || false,
+                disputePoints: remoteCase.dispute_points || (local && local.disputePoints) || [],
+                plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || (local && local.plaintiffFinishedDebate) || false,
+                defendantFinishedDebate: remoteCase.defendant_finished_debate || (local && local.defendantFinishedDebate) || false,
+                lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
+                judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
+                status: remoteCase.status as CaseStatus,
+                verdict: remoteCase.verdict
+            };
+            db[localCase.id] = localCase;
+        });
+
+        // 2. Remove local cases that are NOT in remote (Sync Deletion)
+        Object.values(db).forEach(localCase => {
+            const isMyCase = localCase.plaintiffId === userId || localCase.defendantId === userId;
+            if (isMyCase && !remoteIds.has(localCase.id)) {
+                // If I am defendant, and it's gone from remote, delete it.
+                if (localCase.defendantId === userId) {
+                    delete db[localCase.id];
+                }
+                // If I am plaintiff, and it's gone from remote...
+                else if (localCase.plaintiffId === userId) {
+                     // Only delete if it's not a brand new draft (give it 10s grace period for sync)
+                     if (Date.now() - localCase.createdDate > 10000) {
+                         delete db[localCase.id];
+                     }
+                }
+            }
+        });
+        
+        saveDb(db);
+      }
+    } catch (e) {
+      console.warn("Sync user cases failed:", e);
+    }
+  },
+
   // Delete a case
-  deleteCase: (id: string) => {
+  deleteCase: async (id: string) => {
     const db = getDb();
+    const caseData = db[id];
+    
+    // 1. Delete from Supabase
+    if (caseData && caseData.shareCode) {
+        try {
+            await supabase.from('cases').delete().eq('share_code', caseData.shareCode);
+        } catch (e) {
+            console.error("Supabase delete failed:", e);
+        }
+    }
+
+    // 2. Delete locally
     if (db[id]) {
       delete db[id];
       saveDb(db);

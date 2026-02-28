@@ -336,12 +336,12 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                   <div className="relative z-10 w-32 h-32 flex items-center justify-center">
                       <div className="relative">
                           <BookOpen size={80} className="text-slate-700" />
-                          <PenTool size={40} className="text-red-500 absolute -right-2 bottom-0 animate-pulse transform -rotate-12" />
+                          <PenTool size={40} className="text-red-500 absolute -right-2 bottom-0 animate-bounce transform -rotate-12" />
                       </div>
                   </div>
               </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-2 font-cute">法官正在分析争议焦点</h2>
-              <p className="text-slate-500 mb-8 max-w-md">AI 法官正在仔细阅读双方的陈述与证据，为您提炼核心争议点... (预计 30 秒)</p>
+              <h2 className="text-2xl font-bold text-slate-800 mb-2 font-cute">法官正在总结争议焦点</h2>
+              <p className="text-slate-500 mb-8 max-w-md">用时大概 30s</p>
               
               {errorMsg && (
                   <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg flex flex-col items-start gap-2 text-sm max-w-md animate-fade-in w-full">
@@ -376,12 +376,22 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                   </div>
               )}
 
-              <div className="w-full max-w-md bg-slate-100 rounded-full h-3 overflow-hidden mb-4">
+              <div className="w-full max-w-md bg-slate-100 rounded-full h-3 overflow-hidden mb-2 relative">
+                   {/* Progress Bar Background */}
+                   <div className="absolute inset-0 bg-slate-200/50"></div>
+                   {/* Active Progress */}
                    {isAnalyzing ? (
-                        <div className="bg-purple-600 h-full rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                        <div 
+                            className="bg-purple-600 h-full rounded-full transition-all duration-300 ease-linear" 
+                            style={{ width: `${progress}%` }}
+                        ></div>
                     ) : (
-                        <div className="bg-purple-600 h-full rounded-full animate-pulse w-full opacity-50"></div>
+                        <div className="bg-purple-600 h-full rounded-full w-full opacity-30"></div>
                     )}
+              </div>
+              <div className="flex justify-between w-full max-w-md text-xs text-slate-500 px-1 mb-4">
+                  <span>进度</span>
+                  <span className="font-bold">{Math.round(progress)}%</span>
               </div>
               <p className="text-xs text-slate-400">请勿关闭页面</p>
           </div>
