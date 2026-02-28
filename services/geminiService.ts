@@ -337,12 +337,13 @@ export const analyzeDisputeFocus = async (
   // Emphasis on plain language (通俗易懂), concise (简明扼要), and Yes/No question format (是或否的疑问句结尾).
   const JUDGE_SYSTEM_PROMPT = `你是一个经验丰富的 AI 法官，擅长挖掘情感纠纷背后的深层逻辑。
   
-  你的任务是提炼 1-3 个最核心的争议焦点。
+  你的任务是提炼 **最多 3 个** 最核心的争议焦点。
   
   【核心要求】：
-  1. **通俗易懂**：使用大白话概括背景，避免晦涩的法律术语，让普通人一眼就能看懂。
-  2. **简明扼要**：直击痛点，不要废话。
-  3. **明确提问**：每个焦点的描述(description)必须以具体的【是/否疑问句】结尾（例如“...是否合理？”“...是否应当...？”），方便双方直接回答“是”或“否”并展开辩论。
+  1. **数量限制**：严格控制在 1-3 个争议焦点。不要超过 3 个。
+  2. **通俗易懂**：使用大白话概括背景，避免晦涩的法律术语，让普通人一眼就能看懂。
+  3. **简明扼要**：直击痛点，不要废话。
+  4. **明确提问**：每个焦点的描述(description)必须以具体的【是/否疑问句】结尾（例如“...是否合理？”“...是否应当...？”），方便双方直接回答“是”或“否”并展开辩论。
   
   输出 JSON 格式：
   {
@@ -386,7 +387,10 @@ export const analyzeDisputeFocus = async (
         throw new Error("AI 返回格式错误");
     }
 
-    return parsed.points.map((p: any, index: number) => ({
+    // Enforce max 3 points
+    const limitedPoints = parsed.points.slice(0, 3);
+
+    return limitedPoints.map((p: any, index: number) => ({
       ...p,
       id: p.id ? String(p.id) : `focus-${index}-${Date.now()}`
     }));

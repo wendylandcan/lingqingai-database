@@ -426,7 +426,11 @@ export const MockDb = {
             if (isMyCase && !remoteIds.has(localCase.id)) {
                 // If I am defendant, and it's gone from remote, delete it.
                 if (localCase.defendantId === userId) {
-                    delete db[localCase.id];
+                    // Grace period: Don't delete if updated locally in last 10 seconds (e.g. just joined)
+                    // This prevents race condition where Supabase query returns empty but we just joined locally
+                    if (Date.now() - localCase.lastUpdateDate > 10000) {
+                        delete db[localCase.id];
+                    }
                 }
                 // If I am plaintiff, and it's gone from remote...
                 else if (localCase.plaintiffId === userId) {
