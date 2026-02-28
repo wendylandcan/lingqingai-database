@@ -158,11 +158,11 @@ export const MockDb = {
         defendantRebuttalEvidence: remoteCase.defendant_rebuttal_evidence || [],
         plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || false,
         defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || false,
-        disputePoints: (local && local.disputePoints) || [],
+        disputePoints: remoteCase.dispute_points || (local && local.disputePoints) || [],
         plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || false,
         defendantFinishedDebate: remoteCase.defendant_finished_debate || false,
         // FIX: Map last_analyzed_hash
-        lastAnalyzedHash: (local && local.lastAnalyzedHash), 
+        lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
         judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
         status: remoteCase.status as CaseStatus,
         verdict: remoteCase.verdict
@@ -288,13 +288,13 @@ export const MockDb = {
         defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || (local && local.defendantFinishedCrossExam) || false,
         
         // FIX: Map dispute_points with fallback to local to prevent data loss if column missing/sync fail
-        disputePoints: (local && local.disputePoints) || [],
+        disputePoints: remoteCase.dispute_points || (local && local.disputePoints) || [],
         
         plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || (local && local.plaintiffFinishedDebate) || false,
         defendantFinishedDebate: remoteCase.defendant_finished_debate || (local && local.defendantFinishedDebate) || false,
 
         // FIX: Map last_analyzed_hash with fallback to local to ensure 'Skip Analysis' logic works
-        lastAnalyzedHash: (local && local.lastAnalyzedHash), 
+        lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
 
         judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
         status: remoteCase.status as CaseStatus,
@@ -345,9 +345,11 @@ export const MockDb = {
         // Handle complex objects if column exists and is jsonb
         if (updates.evidence !== undefined) payload.evidence = updates.evidence;
         if (updates.defendantEvidence !== undefined) payload.defendant_evidence = updates.defendantEvidence;
-        // if (updates.disputePoints !== undefined) payload.dispute_points = updates.disputePoints;
-        // FIX: Map lastAnalyzedHash for persistence
-        // if (updates.lastAnalyzedHash !== undefined) payload.last_analyzed_hash = updates.lastAnalyzedHash;
+        
+        // FIX: Ensure disputePoints are synced to cloud
+        if (updates.disputePoints !== undefined) payload.dispute_points = updates.disputePoints;
+        // FIX: Ensure lastAnalyzedHash is synced to cloud
+        if (updates.lastAnalyzedHash !== undefined) payload.last_analyzed_hash = updates.lastAnalyzedHash;
 
         if (updates.verdict !== undefined) payload.verdict = updates.verdict;
         if (updates.judgePersona !== undefined) payload.judge_persona = updates.judgePersona;
