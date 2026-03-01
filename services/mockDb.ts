@@ -231,25 +231,9 @@ export const MockDb = {
           const localLevel = statusOrder[localS] || 0;
           const remoteLevel = statusOrder[remoteS] || 0;
 
-          // Stability Logic: Prevent regression for critical states
-          
-          // 1. Default Judgment Protection:
-          if (localS === CaseStatus.ADJUDICATING && remoteLevel < 5) {
-             console.log(`[Sync] Ignoring stale remote data (Lagging Default Judgment). Local: ADJUDICATING > Remote: ${remoteS}`);
-             return local;
-          }
-
-          // 2. Verdict Protection:
-          if (localS === CaseStatus.CLOSED && remoteLevel < 6) {
-              console.log(`[Sync] Ignoring stale remote data (Lagging Verdict). Local: CLOSED > Remote: ${remoteS}`);
-              return local;
-          }
-
-          // 3. General Forward Progress (Debate Phase):
-          if (localS === CaseStatus.DEBATE && remoteLevel < 4) {
-              console.log(`[Sync] Ignoring stale remote data (Lagging Debate). Local: DEBATE > Remote: ${remoteS}`);
-              return local;
-          }
+          // Stability Logic:
+          // We removed the "forward progress" protection to allow for the "Bucket Effect" (Phase Rollback).
+          // If the server says we are in an earlier phase, we must respect it to ensure synchronization.
 
           // 4. Appeal Protection (Appeal from Closed -> Adjudicating/Debate)
           // If we locally moved BACKWARDS (e.g., from Closed to Debate), and remote is still Closed (ahead),
@@ -284,14 +268,15 @@ export const MockDb = {
         defendantRebuttalEvidence: remoteCase.defendant_rebuttal_evidence || [],
         
         // Fix for button state reverting: Trust local true state if remote is false/null
-        plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || (local && local.plaintiffFinishedCrossExam) || false,
-        defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || (local && local.defendantFinishedCrossExam) || false,
+        // Use nullish coalescing (??) to correctly handle 'false' values from remote
+        plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam ?? (local && local.plaintiffFinishedCrossExam) ?? false,
+        defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam ?? (local && local.defendantFinishedCrossExam) ?? false,
         
         // FIX: Map dispute_points with fallback to local to prevent data loss if column missing/sync fail
         disputePoints: remoteCase.dispute_points || (local && local.disputePoints) || [],
         
-        plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || (local && local.plaintiffFinishedDebate) || false,
-        defendantFinishedDebate: remoteCase.defendant_finished_debate || (local && local.defendantFinishedDebate) || false,
+        plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate ?? (local && local.plaintiffFinishedDebate) ?? false,
+        defendantFinishedDebate: remoteCase.defendant_finished_debate ?? (local && local.defendantFinishedDebate) ?? false,
 
         // FIX: Map last_analyzed_hash with fallback to local to ensure 'Skip Analysis' logic works
         lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
@@ -409,11 +394,11 @@ export const MockDb = {
                 plaintiffRebuttalEvidence: remoteCase.plaintiff_rebuttal_evidence || [], 
                 defendantRebuttal: remoteCase.defendant_rebuttal || '',
                 defendantRebuttalEvidence: remoteCase.defendant_rebuttal_evidence || [],
-                plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam || (local && local.plaintiffFinishedCrossExam) || false,
-                defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam || (local && local.defendantFinishedCrossExam) || false,
+                plaintiffFinishedCrossExam: remoteCase.plaintiff_finished_cross_exam ?? (local && local.plaintiffFinishedCrossExam) ?? false,
+                defendantFinishedCrossExam: remoteCase.defendant_finished_cross_exam ?? (local && local.defendantFinishedCrossExam) ?? false,
                 disputePoints: remoteCase.dispute_points || (local && local.disputePoints) || [],
-                plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate || (local && local.plaintiffFinishedDebate) || false,
-                defendantFinishedDebate: remoteCase.defendant_finished_debate || (local && local.defendantFinishedDebate) || false,
+                plaintiffFinishedDebate: remoteCase.plaintiff_finished_debate ?? (local && local.plaintiffFinishedDebate) ?? false,
+                defendantFinishedDebate: remoteCase.defendant_finished_debate ?? (local && local.defendantFinishedDebate) ?? false,
                 lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
                 lastVerdictHash: remoteCase.last_verdict_hash || (local && local.lastVerdictHash),
                 judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
