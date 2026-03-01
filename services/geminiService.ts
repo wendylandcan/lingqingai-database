@@ -174,7 +174,7 @@ export const summarizeStatement = async (text: string, role: string): Promise<st
     let content = `Statement: "${text}"`;
 
     return await callGemini({
-      taskType: 'light', // Summarization is a simple task
+      taskType: 'light', // <--- 路由至轻量级模型 (gemini-1.5-flash-8b)
       systemInstruction: instruction,
       prompt: content
     });

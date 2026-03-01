@@ -10,6 +10,7 @@ export enum CaseStatus {
   DEBATE = 'DEBATE', // New: Core dispute focus debate
   DEBATE_P_DONE = 'DEBATE_P_DONE',
   DEBATE_D_DONE = 'DEBATE_D_DONE',
+  JUDGE_SELECTION = 'JUDGE_SELECTION', // New: Select AI Judge Persona
   ADJUDICATING = 'ADJUDICATING', // AI is processing
   CLOSED = 'CLOSED', // Verdict delivered
   CANCELLED = 'CANCELLED', // Case cancelled by plaintiff

@@ -32,8 +32,15 @@ const ai = new GoogleGenAI({ apiKey: apiKey });
 
 // Model Configuration
 const MODELS = {
-  HEAVY: 'gemini-3-flash-preview', // For complex logic: Verdict, Dispute Analysis
-  LIGHT: 'gemini-1.5-flash-8b'     // For simple tasks: Summarization, Title, Polishing
+  // 重度核心任务（逻辑严密性要求高）：生成判决书、质证分析
+  // System Instruction: Basic Text Tasks -> 'gemini-3-flash-preview'
+  HEAVY: 'gemini-3-flash-preview', 
+
+  // 轻量级边缘任务（速度快、成本低）：摘要、标题生成、润色
+  // User Request: 'gemini-1.5-flash-8b'
+  // NOTE: If you encounter 404 errors with 'gemini-1.5-flash-8b', please check if your API key supports this model 
+  // or try 'gemini-1.5-flash-8b-latest' or 'gemini-flash-lite-latest'.
+  LIGHT: 'gemini-1.5-flash-8b'     
 };
 
 // API Route: /api/generate-summary
@@ -45,7 +52,13 @@ app.post('/api/generate-summary', async (req, res) => {
     // Model Routing Logic
     let selectedModel = overrideModel;
     if (!selectedModel) {
-      selectedModel = taskType === 'light' ? MODELS.LIGHT : MODELS.HEAVY;
+      // Strict Dual-Track Routing
+      if (taskType === 'heavy') {
+          selectedModel = MODELS.HEAVY;
+      } else {
+          // Default to LIGHT for 'light' or undefined taskType
+          selectedModel = MODELS.LIGHT;
+      }
     }
 
     console.log(`[Backend] Processing request. Task: ${taskType || 'default'}, Model: ${selectedModel}`);

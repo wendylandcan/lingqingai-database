@@ -61,8 +61,9 @@ const CASE_STATUS_RANK: Record<string, number> = {
   [CaseStatus.DEBATE]: 5,
   [CaseStatus.DEBATE_P_DONE]: 5,
   [CaseStatus.DEBATE_D_DONE]: 5,
-  [CaseStatus.ADJUDICATING]: 6,
-  [CaseStatus.CLOSED]: 7,
+  [CaseStatus.JUDGE_SELECTION]: 6,
+  [CaseStatus.ADJUDICATING]: 7,
+  [CaseStatus.CLOSED]: 8,
   [CaseStatus.CANCELLED]: -1,
 };
 
@@ -211,13 +212,13 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
     const handleFinishDebate = () => {
         if (isPlaintiff) {
              if (data.defendantFinishedDebate) {
-                 onSubmit({ plaintiffFinishedDebate: true, status: CaseStatus.ADJUDICATING });
+                 onSubmit({ plaintiffFinishedDebate: true, status: CaseStatus.JUDGE_SELECTION });
              } else {
                  onSubmit({ plaintiffFinishedDebate: true });
              }
         } else if (isDefendant) {
              if (data.plaintiffFinishedDebate) {
-                 onSubmit({ defendantFinishedDebate: true, status: CaseStatus.ADJUDICATING });
+                 onSubmit({ defendantFinishedDebate: true, status: CaseStatus.JUDGE_SELECTION });
              } else {
                  onSubmit({ defendantFinishedDebate: true });
              }
@@ -233,7 +234,7 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
 
         if (myStatus) {
             if (otherStatus) {
-                 return { text: "双方已完成，正在进入判决...", disabled: true, icon: <Loader2 className="animate-spin" size={20}/> };
+                 return { text: "双方已完成，正在进入法官选择...", disabled: true, icon: <Loader2 className="animate-spin" size={20}/> };
             } else {
                  return { text: `等待${otherRoleName}结束辩论...`, disabled: true, icon: <Hourglass className="animate-pulse" size={20}/> };
             }
@@ -249,7 +250,7 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
     useEffect(() => {
         if (data.plaintiffFinishedDebate && data.defendantFinishedDebate && data.status === CaseStatus.DEBATE) {
             console.log("Auto-triggering phase transition (Both finished)...");
-            onSubmit({ status: CaseStatus.ADJUDICATING });
+            onSubmit({ status: CaseStatus.JUDGE_SELECTION });
         }
     }, [data.plaintiffFinishedDebate, data.defendantFinishedDebate, data.status]);
 
@@ -357,10 +358,14 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         setProgress(0);
         const timer = setInterval(() => {
             setProgress(old => {
-                if (old >= 95) {
+                // Slower progress: 0.1 per 200ms = 0.5% per second -> ~200 seconds to 100%
+                // But we want it to be asymptotic.
+                if (old >= 90) {
+                    // Very slow at the end
                     return old < 99 ? old + 0.05 : 99;
                 }
-                return old + 0.4; 
+                // Moderate speed at start
+                return old + 0.2; 
             });
         }, 200);
         return () => clearInterval(timer);
@@ -413,7 +418,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         console.error("Verdict Generation Failed:", e);
         alert("AI 法官忙碌中，请重试: " + (e as any).message); 
         // Revert status on error so users can try again
-        await onSubmit({ status: CaseStatus.DEBATE }); 
+        await onSubmit({ status: CaseStatus.JUDGE_SELECTION }); 
         setProgress(0); 
     } 
   };
@@ -461,7 +466,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
                AI 法官正在审理中...
              </h3>
              <p className="text-slate-500 font-medium">
-               （预计 1分钟）
+               {progress > 90 ? "案情复杂，正在深入分析..." : "（预计 1-2 分钟）"}
              </p>
           </div>
 
@@ -476,7 +481,12 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
                ></div>
             </div>
             <div className="flex items-center justify-center gap-2 mt-2">
-                <p className="text-xs text-slate-400 italic">正在查阅案卷与证据...</p>
+                <p className="text-xs text-slate-400 italic">
+                    {progress < 30 ? "正在查阅案卷与证据..." : 
+                     progress < 60 ? "正在分析争议焦点..." : 
+                     progress < 90 ? "正在生成判决书..." : 
+                     "正在最终校对..."}
+                </p>
                 <span className={`text-xs font-bold ${isCat ? 'text-rose-500' : 'text-slate-500'}`}>{Math.floor(progress)}%</span>
             </div>
           </div>
@@ -803,7 +813,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
             plaintiffFinishedCrossExam: false,
             defendantFinishedCrossExam: false
         };
-    } else if (data.status === CaseStatus.ADJUDICATING) {
+    } else if (data.status === CaseStatus.JUDGE_SELECTION || data.status === CaseStatus.ADJUDICATING) {
         if (data.defenseStatement === "（被告缺席，放弃答辩）") {
              targetStatus = CaseStatus.DEFENSE_PENDING;
              updatePayload = { 
@@ -812,13 +822,16 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
                  defenseSummary: undefined 
              };
         } else {
-            targetStatus = CaseStatus.DEBATE;
-            updatePayload = { 
-                status: targetStatus,
-                disputePoints: data.disputePoints,
-                plaintiffFinishedDebate: false,
-                defendantFinishedDebate: false
-            };
+            // Check if debate is actually finished
+            if (!data.plaintiffFinishedDebate || !data.defendantFinishedDebate) {
+                 targetStatus = CaseStatus.DEBATE;
+                 updatePayload = { 
+                     status: targetStatus,
+                     disputePoints: data.disputePoints,
+                     plaintiffFinishedDebate: false,
+                     defendantFinishedDebate: false
+                 };
+            }
         }
     } else if (data.status === CaseStatus.CLOSED) {
         targetStatus = CaseStatus.ADJUDICATING;
@@ -937,6 +950,10 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
     case CaseStatus.DEBATE: 
       title = "争议焦点辩论";
       content = <DisputeDebateStep data={data} onSubmit={update} userRole={role} />;
+      break;
+    case CaseStatus.JUDGE_SELECTION:
+      title = "选择法官";
+      content = (isPlaintiff || isDefendant) ? <AdjudicationStep data={data} onSubmit={update} /> : <Waiting msg="等待双方选择法官..." />;
       break;
     case CaseStatus.ADJUDICATING:
       title = "AI 审理中";
