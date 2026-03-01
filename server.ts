@@ -30,13 +30,25 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey: apiKey });
 
+// Model Configuration
+const MODELS = {
+  HEAVY: 'gemini-3-flash-preview', // For complex logic: Verdict, Dispute Analysis
+  LIGHT: 'gemini-1.5-flash-8b'     // For simple tasks: Summarization, Title, Polishing
+};
+
 // API Route: /api/generate-summary
-// This endpoint acts as a proxy to the Gemini API
+// This endpoint acts as a proxy to the Gemini API with Model Routing
 app.post('/api/generate-summary', async (req, res) => {
   try {
-    const { model, systemInstruction, prompt, temperature, jsonMode, images, contents } = req.body;
+    const { taskType, model: overrideModel, systemInstruction, prompt, temperature, jsonMode, images, contents } = req.body;
 
-    console.log(`[Backend] Processing request for model: ${model}`);
+    // Model Routing Logic
+    let selectedModel = overrideModel;
+    if (!selectedModel) {
+      selectedModel = taskType === 'light' ? MODELS.LIGHT : MODELS.HEAVY;
+    }
+
+    console.log(`[Backend] Processing request. Task: ${taskType || 'default'}, Model: ${selectedModel}`);
 
     const config: any = {
       systemInstruction: systemInstruction,
@@ -66,7 +78,7 @@ app.post('/api/generate-summary', async (req, res) => {
 
     // Call Gemini API
     const response = await ai.models.generateContent({
-      model: model,
+      model: selectedModel,
       contents: contentsInput,
       config: config
     });

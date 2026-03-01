@@ -6,13 +6,6 @@ import { JudgePersona, Verdict, EvidenceItem, SentimentResult, FactCheckResult, 
 // Client-side SDK initialization removed. API calls are now proxied through the backend.
 // const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); 
 
-// --- Model Constants ---
-// Upgraded to Gemini 3 series as per latest guidelines and to potentially alleviate 2.0 flash quota issues
-const GEMINI_MODEL_FLASH = 'gemini-3-flash-preview'; 
-const GEMINI_MODEL_PRO = 'gemini-3-pro-preview'; 
-// Verdict generation specifically uses Gemini 3 Flash for better creative instruction following
-const GEMINI_MODEL_VERDICT = 'gemini-3-flash-preview';
-
 // --- Helper: Retry Logic & Timeout ---
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -94,7 +87,7 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, ini
  * Core Gemini Generation Function
  */
 async function callGemini(params: {
-  model: string;
+  taskType: 'heavy' | 'light'; // Use taskType for model routing
   systemInstruction?: string;
   prompt?: string;
   temperature?: number;
@@ -158,7 +151,7 @@ async function callGemini(params: {
 export const transcribeAudio = async (base64Audio: string, mimeType: string): Promise<string> => {
   try {
     const res = await callGemini({
-      model: GEMINI_MODEL_FLASH,
+      taskType: 'heavy', // Audio transcription requires good multimodal capabilities
       systemInstruction: `You are an expert transcriber. Filter out fillers. Add punctuation.`,
       contents: {
         parts: [
@@ -181,7 +174,7 @@ export const summarizeStatement = async (text: string, role: string): Promise<st
     let content = `Statement: "${text}"`;
 
     return await callGemini({
-      model: GEMINI_MODEL_FLASH,
+      taskType: 'light', // Summarization is a simple task
       systemInstruction: instruction,
       prompt: content
     });
@@ -193,7 +186,7 @@ export const summarizeStatement = async (text: string, role: string): Promise<st
 export const generateCaseTitle = async (description: string): Promise<string> => {
   try {
     const res = await callGemini({
-      model: GEMINI_MODEL_FLASH,
+      taskType: 'light', // Title generation is a simple task
       systemInstruction: `你是一个法院书记员。请根据用户的案件描述，提炼一个简短的中文案件标题。
       要求：
       1. 必须根据案件事实总结，以“案”字结尾（例如“火锅约会迟到案”、“家务分配不均案”）。
@@ -211,7 +204,7 @@ export const generateCaseTitle = async (description: string): Promise<string> =>
 export const polishText = async (text: string): Promise<string> => {
   try {
     return await callGemini({
-      model: GEMINI_MODEL_FLASH,
+      taskType: 'light', // Polishing is a simple task
       systemInstruction: `Remove profanity. Normalize judgments. Keep facts. Output only clean text.`,
       prompt: `Text: "${text}"`
     });
@@ -223,7 +216,7 @@ export const polishText = async (text: string): Promise<string> => {
 export const fixGrammar = async (text: string): Promise<string> => {
   try {
     return await callGemini({
-      model: GEMINI_MODEL_FLASH,
+      taskType: 'light', // Grammar fix is a simple task
       systemInstruction: `Add punctuation. Remove fillers (uh, um). Fix fragments. Keep tone.`,
       prompt: `Text: "${text}"`
     });
@@ -235,7 +228,7 @@ export const fixGrammar = async (text: string): Promise<string> => {
 export const analyzeSentiment = async (text: string): Promise<SentimentResult> => {
   try {
     const res = await callGemini({
-      model: GEMINI_MODEL_FLASH,
+      taskType: 'light', // Sentiment analysis is a simple classification task
       jsonMode: true,
       systemInstruction: `Analyze for toxicity. Return JSON: {isToxic, score, reason}.`,
       prompt: `Text: "${text}"`
@@ -249,7 +242,7 @@ export const analyzeSentiment = async (text: string): Promise<SentimentResult> =
 export const extractFactPoints = async (narrative: string): Promise<FactCheckResult> => {
   try {
     const res = await callGemini({
-      model: GEMINI_MODEL_FLASH,
+      taskType: 'light', // Fact extraction is relatively simple
       jsonMode: true,
       systemInstruction: `Extract objective facts. Return JSON: {facts: string[]}.`,
       prompt: `Narrative: "${narrative}"`
@@ -262,7 +255,7 @@ export const extractFactPoints = async (narrative: string): Promise<FactCheckRes
 
 /**
  * Cross-Examination Analysis for a single evidence item.
- * Uses GEMINI_MODEL_PRO for better reasoning.
+ * Uses HEAVY model for better reasoning.
  */
 export const analyzeEvidenceCredibility = async (
   evidence: EvidenceItem,
@@ -270,17 +263,13 @@ export const analyzeEvidenceCredibility = async (
   defendantArg: string
 ): Promise<string> => {
   
-  const SYSTEM_PROMPT = `你现在是负责【证据质证】的 AI 法官助理。
+  const SYSTEM_PROMPT = `你是一个极其严谨的质证分析专家。请严格按照以下 4 个步骤对证据进行推理：
+  第一步(证据提取)：客观描述图片/文本证据中的关键信息(时间/金额/人物等)。
+  第二步(比对原告)：与原告陈述比对，寻找相符点与矛盾点。
+  第三步(比对被告)：与被告陈述比对，寻找相符点与矛盾点。
+  第四步(最终结论)：综合以上信息，判断该证据的真实性与关联性，并给出不超过 100 字的精简最终分析。
   
-  【任务目标】：
-  请审核以下证据，并结合原告与被告的质证意见（双方对证据的看法），判断该证据是否有效，以及它证明了什么事实。
-  
-  【分析要求】：
-  1. **真实性核查**：如果是图片，检查是否有矛盾之处；如果是转录文本，分析语气。
-  2. **关联性分析**：该证据是否直接支持了提交方的主张？还是被对方的解释合理化解了？
-  3. **争议焦点提炼**：如果双方对该证据解读完全相反，请将其列为核心争议焦点。
-  
-  请输出一段简练的分析结论（150字以内），用 Markdown 格式，语气客观中立。`;
+  请直接输出推理过程，确保逻辑严密，语气客观中立。`;
 
   // Prepare Prompt Context
   let promptText = `【待分析证据】：
@@ -303,7 +292,7 @@ export const analyzeEvidenceCredibility = async (
 
   try {
     const result = await callGemini({
-      model: GEMINI_MODEL_PRO, // Use PRO for better logic/vision analysis
+      taskType: 'heavy', // Complex reasoning required
       systemInstruction: SYSTEM_PROMPT,
       prompt: promptText,
       images: images
@@ -345,7 +334,10 @@ export const analyzeDisputeFocus = async (
   3. **简明扼要**：直击痛点，不要废话。
   4. **明确提问**：每个焦点的描述(description)必须以具体的【是/否疑问句】结尾（例如“...是否合理？”“...是否应当...？”），方便双方直接回答“是”或“否”并展开辩论。
   
-  输出 JSON 格式：
+  【输出格式要求】：
+  必须返回纯净的 JSON 格式，不要包含 Markdown 代码块（如 \`\`\`json）。
+  
+  JSON 结构如下：
   {
     "points": [
        {
@@ -357,7 +349,7 @@ export const analyzeDisputeFocus = async (
 
   try {
     const result = await callGemini({
-      model: GEMINI_MODEL_FLASH, // Use FLASH to avoid Quota Limits (429)
+      taskType: 'heavy', // Complex reasoning required
       jsonMode: true,
       temperature: 0.4, // Lower temperature for more deterministic JSON
       systemInstruction: JUDGE_SYSTEM_PROMPT,
@@ -534,7 +526,7 @@ export const generateVerdict = async (
 
   try {
     const result = await callGemini({
-      model: GEMINI_MODEL_VERDICT, // Updated to Gemini 3 Flash Preview as requested
+      taskType: 'heavy', // Verdict generation is the most complex task
       jsonMode: true,
       temperature: 0.7,
       systemInstruction: systemPrompt,
