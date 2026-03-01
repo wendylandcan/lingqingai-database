@@ -226,8 +226,9 @@ export const MockDb = {
             [CaseStatus.DEFENSE_PENDING]: 2,
             [CaseStatus.CROSS_EXAMINATION]: 3,
             [CaseStatus.DEBATE]: 4,
-            [CaseStatus.ADJUDICATING]: 5,
-            [CaseStatus.CLOSED]: 6,
+            [CaseStatus.JUDGE_SELECTION]: 5, // New Phase
+            [CaseStatus.ADJUDICATING]: 6,
+            [CaseStatus.CLOSED]: 7,
             [CaseStatus.CANCELLED]: 99
           };
           
@@ -240,10 +241,12 @@ export const MockDb = {
           // We removed the "forward progress" protection to allow for the "Bucket Effect" (Phase Rollback).
           // If the server says we are in an earlier phase, we must respect it to ensure synchronization.
 
-          // 4. Appeal Protection (Appeal from Closed -> Adjudicating/Debate)
-          // If we locally moved BACKWARDS (e.g., from Closed to Debate), and remote is still Closed (ahead),
+          // 4. Appeal Protection (Appeal from Closed -> Judge Selection/Debate)
+          // If we locally moved BACKWARDS (e.g., from Closed to Judge Selection), and remote is still Closed (ahead),
           // we should trust Local (user intent) over Remote (stale state).
-          if ((localS === CaseStatus.ADJUDICATING || localS === CaseStatus.DEBATE) && remoteLevel === 6) {
+          // CRITICAL FIX: Do NOT protect ADJUDICATING. If local is ADJUDICATING and remote is CLOSED, 
+          // it means the verdict is ready and we MUST sync it!
+          if ((localS === CaseStatus.JUDGE_SELECTION || localS === CaseStatus.DEBATE) && remoteLevel === 7) {
                console.log(`[Sync] Ignoring remote data (Appeal/Back Action). Local: ${localS} < Remote: CLOSED`);
                return local;
           }
