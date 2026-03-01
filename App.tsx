@@ -339,11 +339,7 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
 
 const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Partial<CaseData>) => Promise<void> | void }) => {
   const [persona, setPersona] = useState(data.judgePersona);
-  // Use data.isDeliberating (synced) or fallback to checking lastVerdictHash for "THINKING" signal
-  // This ensures sync works even if is_deliberating column is missing in DB
-  const isDeliberating = data.isDeliberating || data.lastVerdictHash === "THINKING";
-  const [progress, setProgress] = useState(0);
-
+  
   // Sync persona from server (if changed by other user)
   useEffect(() => {
     if (data.judgePersona && data.judgePersona !== persona) {
@@ -351,9 +347,13 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
     }
   }, [data.judgePersona]);
 
-  // Sync progress if deliberating
+  // Status-based State (Single Source of Truth)
+  const isGenerating = data.status === CaseStatus.ADJUDICATING;
+  const [progress, setProgress] = useState(0);
+
+  // Progress Animation (Visual only, triggered by status)
   useEffect(() => {
-    if (isDeliberating) {
+    if (isGenerating) {
         setProgress(0);
         const timer = setInterval(() => {
             setProgress(old => {
@@ -364,50 +364,28 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
             });
         }, 200);
         return () => clearInterval(timer);
+    } else {
+        setProgress(0);
     }
-  }, [isDeliberating]);
-
-  const computeVerdictHash = () => {
-    const relevantContent = {
-        desc: data.description,
-        defStmt: data.defenseStatement,
-        plReb: data.plaintiffRebuttal,
-        defReb: data.defendantRebuttal || "",
-        ev: data.evidence.map(e => `${e.id}-${e.description}-${e.isContested}`).join('|'),
-        defEv: data.defendantEvidence.map(e => `${e.id}-${e.description}-${e.isContested}`).join('|'),
-        disputePoints: data.disputePoints.map(p => `${p.id}-${p.plaintiffArg}-${p.defendantArg}`).join('|'),
-        persona: persona // Persona is part of the hash for caching
-    };
-    return JSON.stringify(relevantContent);
-  };
+  }, [isGenerating]);
 
   const handleJudgement = async () => {
-    // Double check if already deliberating or closed to prevent race conditions
-    if (isDeliberating || data.status === CaseStatus.CLOSED) {
-        console.log("Already deliberating or closed, skipping generation.");
+    // 1. LOCK & BROADCAST (State Lock)
+    // Prevent concurrent clicks: If already generating or closed, stop.
+    if (data.status === CaseStatus.ADJUDICATING || data.status === CaseStatus.CLOSED) {
         return;
     }
 
-    const currentHash = computeVerdictHash();
-
-    // Cache Hit Check
-    if (data.verdict && data.lastVerdictHash === currentHash && data.judgePersona === persona) {
-        console.log("Verdict Cache Hit! Skipping AI generation.");
-        onSubmit({ status: CaseStatus.CLOSED });
-        return;
-    }
-
-    // Start Deliberation (Syncs to other user)
-    // We set judgePersona here again just to be safe
-    // We also set lastVerdictHash to "THINKING" as a robust signal for the other client
-    onSubmit({ 
-        isDeliberating: true, 
-        judgePersona: persona,
-        lastVerdictHash: "THINKING" 
+    // Immediate State Update: Locks the UI for both users (eventually)
+    // and sets the "Loading" view for the initiator immediately.
+    await onSubmit({ 
+        status: CaseStatus.ADJUDICATING, 
+        judgePersona: persona 
     });
     
-    // Local progress is handled by useEffect now
-    
+    // 2. LEADER EXECUTION (Single Point Trigger)
+    // Only the user who clicked this button executes the API call.
+    // The other user just receives the status update and shows the loading screen.
     try {
       const verdict = await GeminiService.generateVerdict(
         data.category, data.description, data.demands, data.defenseStatement,
@@ -420,25 +398,29 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
       
       setProgress(100);
 
-      setTimeout(() => {
-          onSubmit({ 
+      // 3. PERSIST & SHARE (Result Sharing)
+      // Save the result to DB and unlock the state.
+      // Both users will see the verdict once this update propagates.
+      setTimeout(async () => {
+          await onSubmit({ 
               verdict, 
               judgePersona: persona, 
               status: CaseStatus.CLOSED,
-              lastVerdictHash: currentHash, // Save the new fingerprint
-              isDeliberating: false // Stop deliberation
           });
       }, 500);
+
     } catch (e) { 
-        alert("AI 法官忙碌中: " + (e as any).message); 
-        onSubmit({ isDeliberating: false, lastVerdictHash: "" }); // Reset on error
+        console.error("Verdict Generation Failed:", e);
+        alert("AI 法官忙碌中，请重试: " + (e as any).message); 
+        // Revert status on error so users can try again
+        await onSubmit({ status: CaseStatus.DEBATE }); 
         setProgress(0); 
     } 
   };
 
   const handlePersonaSelect = (id: JudgePersona) => {
       setPersona(id);
-      // Sync immediately so other user sees the selection
+      // Sync selection immediately so other user sees the selection
       onSubmit({ judgePersona: id });
   };
 
@@ -457,7 +439,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
     }
   ];
 
-  if (isDeliberating) {
+  if (isGenerating) {
     const isCat = persona === JudgePersona.CAT;
     return (
        <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 space-y-10 animate-fade-in">
