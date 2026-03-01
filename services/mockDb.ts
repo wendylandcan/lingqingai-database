@@ -214,11 +214,40 @@ export const MockDb = {
 
       // --- FLASH SCREEN FIX ---
       // If the local data was updated by a USER ACTION very recently (< 5s),
-      // we trust the local optimistic update over the remote data.
-      // This prevents the UI from reverting to the old state while the Supabase write propagates.
+      // we generally trust the local optimistic update to avoid jitter.
+      // BUT, if the remote status is "ahead" of us (e.g. moved to next phase), 
+      // we MUST accept it, otherwise we get stuck in the previous phase.
+      const statusOrder: Record<string, number> = {
+        [CaseStatus.DRAFTING]: 0,
+        [CaseStatus.PLAINTIFF_EVIDENCE]: 1,
+        [CaseStatus.DEFENSE_PENDING]: 2,
+        [CaseStatus.CROSS_EXAMINATION]: 3,
+        [CaseStatus.CROSS_EXAMINATION_P_DONE]: 3,
+        [CaseStatus.CROSS_EXAMINATION_D_DONE]: 3,
+        [CaseStatus.ANALYZING_DISPUTE]: 4,
+        [CaseStatus.DEBATE]: 5,
+        [CaseStatus.DEBATE_P_DONE]: 5,
+        [CaseStatus.DEBATE_D_DONE]: 5,
+        [CaseStatus.JUDGE_SELECTION]: 6,
+        [CaseStatus.ADJUDICATING]: 7,
+        [CaseStatus.CLOSED]: 8,
+        [CaseStatus.CANCELLED]: 99
+      };
+
       if (local && local._isUserAction && (Date.now() - local.lastUpdateDate < 5000)) {
-          console.log("[Sync] Local data is fresh (user action < 5s), ignoring potential stale remote data.");
-          return local;
+          const localS = local.status as CaseStatus;
+          const remoteS = remoteCase.status as CaseStatus;
+          const localLevel = statusOrder[localS] || 0;
+          const remoteLevel = statusOrder[remoteS] || 0;
+
+          // Only block if we are at the SAME or LATER stage. 
+          // If remote is AHEAD (remoteLevel > localLevel), we allow the sync to pass through 
+          // so we don't get stuck.
+          if (remoteLevel <= localLevel) {
+             console.log("[Sync] Local data is fresh & remote is not ahead. Ignoring remote.");
+             return local;
+          }
+          console.log(`[Sync] Local is fresh but remote is ahead (${localS} -> ${remoteS}). Accepting remote.`);
       }
 
       if (error || !remoteCase) {
