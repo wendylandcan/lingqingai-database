@@ -194,7 +194,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                 const finalSummary = await GeminiService.streamSummarizeStatement(
                     data.defenseStatement, 
                     "Defendant", 
-                    (partial) => setStreamingDefSummary(partial)
+                    (delta) => setStreamingDefSummary(prev => prev + delta)
                 );
                 if (finalSummary) onSubmit({ defenseSummary: finalSummary });
              } catch(e) {
@@ -213,7 +213,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                 const finalSummary = await GeminiService.streamSummarizeStatement(
                     data.description, 
                     "Plaintiff", 
-                    (partial) => setStreamingPlSummary(partial)
+                    (delta) => setStreamingPlSummary(prev => prev + delta)
                 );
                 if (finalSummary) onSubmit({ plaintiffSummary: finalSummary });
              } catch(e) {

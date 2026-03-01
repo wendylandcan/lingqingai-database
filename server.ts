@@ -122,6 +122,7 @@ app.post('/api/generate-summary', async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Critical for Nginx to disable buffering
 
     // Call Gemini API with Streaming
     const response = await ai.models.generateContentStream({
@@ -135,6 +136,8 @@ app.post('/api/generate-summary', async (req, res) => {
       if (text) {
         // Send data chunk
         res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        // Attempt to flush if method exists (though standard Express res doesn't have .flush())
+        if ((res as any).flush) (res as any).flush();
       }
     }
 

@@ -204,15 +204,22 @@ export const streamSummarizeStatement = async (
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
+      let buffer = "";
 
       while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           
           const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n\n');
+          buffer += chunk;
           
-          for (const line of lines) {
+          // Split by double newline which is the standard SSE delimiter
+          const parts = buffer.split('\n\n');
+          // The last part might be incomplete, so we keep it in the buffer
+          buffer = parts.pop() || "";
+          
+          for (const part of parts) {
+              const line = part.trim();
               if (line.startsWith('data: ')) {
                   const dataStr = line.replace('data: ', '').trim();
                   if (dataStr === '[DONE]') continue;
@@ -220,8 +227,9 @@ export const streamSummarizeStatement = async (
                   try {
                       const data = JSON.parse(dataStr);
                       if (data.text) {
-                          fullText += data.text;
-                          onChunk(fullText); // Update with accumulated text
+                          const delta = data.text;
+                          fullText += delta;
+                          onChunk(delta); // Emit delta for functional updates
                       }
                       if (data.error) throw new Error(data.error);
                   } catch (e) {
