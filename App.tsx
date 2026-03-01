@@ -381,6 +381,60 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         return;
     }
 
+    // --- CACHE LOGIC START ---
+    // Calculate a simple hash of the current case state + persona
+    const computeHash = (obj: any) => {
+        const str = JSON.stringify(obj);
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        return hash.toString();
+    };
+
+    const currentHash = computeHash({
+        category: data.category,
+        description: data.description,
+        demands: data.demands,
+        defenseStatement: data.defenseStatement,
+        evidence: data.evidence,
+        defendantEvidence: data.defendantEvidence,
+        plaintiffRebuttal: data.plaintiffRebuttal,
+        plaintiffRebuttalEvidence: data.plaintiffRebuttalEvidence,
+        defendantRebuttal: data.defendantRebuttal,
+        defendantRebuttalEvidence: data.defendantRebuttalEvidence,
+        disputePoints: data.disputePoints,
+        persona: persona
+    });
+
+    console.log("Verdict Cache Check - Hash:", currentHash);
+    
+    // Check Cache
+    if (data.verdictCache && data.verdictCache[currentHash]) {
+        console.log("Verdict Cache HIT! Using cached verdict.");
+        const cachedVerdict = data.verdictCache[currentHash];
+        
+        // Simulate a short loading for better UX (so it doesn't feel like a glitch)
+        await onSubmit({ 
+            status: CaseStatus.ADJUDICATING, 
+            judgePersona: persona 
+        });
+        
+        setProgress(100); // Jump to full
+        
+        setTimeout(async () => {
+             await onSubmit({ 
+                 verdict: cachedVerdict,
+                 judgePersona: persona, 
+                 status: CaseStatus.CLOSED,
+             });
+        }, 800);
+        return;
+    }
+    // --- CACHE LOGIC END ---
+
     // Immediate State Update: Locks the UI for both users (eventually)
     // and sets the "Loading" view for the initiator immediately.
     await onSubmit({ 
@@ -406,11 +460,15 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
       // 3. PERSIST & SHARE (Result Sharing)
       // Save the result to DB and unlock the state.
       // Both users will see the verdict once this update propagates.
+      // Update Cache
+      const newCache = { ...(data.verdictCache || {}), [currentHash]: verdict };
+
       setTimeout(async () => {
           await onSubmit({ 
               verdict, 
               judgePersona: persona, 
               status: CaseStatus.CLOSED,
+              verdictCache: newCache // Save to cache
           });
       }, 500);
 
@@ -834,7 +892,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
             }
         }
     } else if (data.status === CaseStatus.CLOSED) {
-        targetStatus = CaseStatus.ADJUDICATING;
+        targetStatus = CaseStatus.JUDGE_SELECTION;
         updatePayload = { status: targetStatus, isDeliberating: false };
     } else if (data.status === CaseStatus.CANCELLED) {
         onBack();
@@ -967,7 +1025,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
         onReset={() => onBack()} 
         onAppeal={() => {
             update({ 
-                status: CaseStatus.ADJUDICATING,
+                status: CaseStatus.JUDGE_SELECTION,
                 disputePoints: data.disputePoints,
                 isDeliberating: false // Ensure we reset this
             });

@@ -110,6 +110,7 @@ export interface CaseData {
   judgePersona: JudgePersona;
   status: CaseStatus;
   verdict?: Verdict;
+  verdictCache?: Record<string, Verdict>; // Cache for verdicts by hash
 }
 
 export interface Verdict {
