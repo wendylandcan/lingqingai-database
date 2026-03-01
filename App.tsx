@@ -50,6 +50,22 @@ import {
 import { supabase } from './supabaseClient';
 import Auth from './components/Auth';
 
+const CASE_STATUS_RANK: Record<string, number> = {
+  [CaseStatus.DRAFTING]: 0,
+  [CaseStatus.PLAINTIFF_EVIDENCE]: 1,
+  [CaseStatus.DEFENSE_PENDING]: 2,
+  [CaseStatus.CROSS_EXAMINATION]: 3,
+  [CaseStatus.CROSS_EXAMINATION_P_DONE]: 3,
+  [CaseStatus.CROSS_EXAMINATION_D_DONE]: 3,
+  [CaseStatus.ANALYZING_DISPUTE]: 4,
+  [CaseStatus.DEBATE]: 5,
+  [CaseStatus.DEBATE_P_DONE]: 5,
+  [CaseStatus.DEBATE_D_DONE]: 5,
+  [CaseStatus.ADJUDICATING]: 6,
+  [CaseStatus.CLOSED]: 7,
+  [CaseStatus.CANCELLED]: -1,
+};
+
 const FilingForm = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Partial<CaseData>) => Promise<void> | void }) => {
   const [desc, setDesc] = useState(data.description);
   const [demands, setDemands] = useState(data.demands);
@@ -730,11 +746,14 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
   const isDefendant = user === data.defendantId;
   const role = isPlaintiff ? UserRole.PLAINTIFF : isDefendant ? UserRole.DEFENDANT : UserRole.SPECTATOR;
 
-  const handleStepBack = () => {
+  const handleStepBack = async () => {
     if (!data) {
       onBack();
       return;
     }
+
+    let targetStatus: CaseStatus | null = null;
+    let updatePayload: Partial<CaseData> = {};
 
     if (data.status === CaseStatus.DRAFTING) {
         onBack();
@@ -756,50 +775,78 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
     }
 
     if (data.status === CaseStatus.CROSS_EXAMINATION) {
-        update({ status: CaseStatus.DEFENSE_PENDING });
-        return;
-    }
-
-    if (data.status === CaseStatus.DEBATE) {
-        // Unconditionally reset both user flags when stepping back from DEBATE to CROSS_EXAMINATION.
-        // This ensures that re-entering DEBATE requires explicit confirmation ("Finish") from BOTH parties again.
-        // This also fixes the bug where users could get stuck in "Both sides finished" state without transitioning.
-        update({ 
-            status: CaseStatus.CROSS_EXAMINATION,
+        targetStatus = CaseStatus.DEFENSE_PENDING;
+        updatePayload = { status: targetStatus };
+    } else if (data.status === CaseStatus.DEBATE) {
+        targetStatus = CaseStatus.CROSS_EXAMINATION;
+        updatePayload = { 
+            status: targetStatus,
             plaintiffFinishedDebate: false,
             defendantFinishedDebate: false,
             plaintiffFinishedCrossExam: false,
             defendantFinishedCrossExam: false
-        });
-        return;
-    }
-
-    if (data.status === CaseStatus.ADJUDICATING) {
+        };
+    } else if (data.status === CaseStatus.ADJUDICATING) {
         if (data.defenseStatement === "（被告缺席，放弃答辩）") {
-             update({ 
-                 status: CaseStatus.DEFENSE_PENDING,
+             targetStatus = CaseStatus.DEFENSE_PENDING;
+             updatePayload = { 
+                 status: targetStatus,
                  defenseStatement: "", 
                  defenseSummary: undefined 
-             });
+             };
+        } else {
+            targetStatus = CaseStatus.DEBATE;
+            updatePayload = { 
+                status: targetStatus,
+                disputePoints: data.disputePoints,
+                plaintiffFinishedDebate: false,
+                defendantFinishedDebate: false
+            };
+        }
+    } else if (data.status === CaseStatus.CLOSED) {
+        targetStatus = CaseStatus.ADJUDICATING;
+        updatePayload = { status: targetStatus };
+    } else if (data.status === CaseStatus.CANCELLED) {
+        onBack();
+        return;
+    } else {
+        // Fallback for other statuses or if no match
+        // But wait, if we are in CROSS_EXAMINATION, we set targetStatus.
+        // What if we are in PLAINTIFF_EVIDENCE? We handled it above.
+        // What if we are in DRAFTING? Handled above.
+        // What if we are in DEFENSE_PENDING? Handled above.
+        // So this else is for unknown statuses.
+        if (!targetStatus) {
+             onBack();
              return;
         }
-
-        update({ 
-            status: CaseStatus.DEBATE,
-            disputePoints: data.disputePoints,
-            // Reset flags so they can debate again
-            plaintiffFinishedDebate: false,
-            defendantFinishedDebate: false
-        });
-        return;
     }
 
-    if (data.status === CaseStatus.CLOSED) {
-        update({ status: CaseStatus.ADJUDICATING });
-        return;
-    }
+    if (targetStatus) {
+        // Enforce "Bucket Effect" (Lowest Common Denominator)
+        try {
+            const { data: latestCase, error } = await supabase
+                .from('cases')
+                .select('status')
+                .eq('id', data.id)
+                .single();
+            
+            if (!error && latestCase) {
+                 const currentRank = CASE_STATUS_RANK[latestCase.status] ?? 0;
+                 const targetRank = CASE_STATUS_RANK[targetStatus] ?? 0;
+                 
+                 // If target is NOT earlier than current (i.e. target >= current), skip update.
+                 if (targetRank >= currentRank) {
+                     console.log(`[Bucket Effect] Skipping update. Target ${targetStatus}(${targetRank}) >= Current ${latestCase.status}(${currentRank})`);
+                     return;
+                 }
+            }
+        } catch (e) {
+            console.warn("Error checking latest status for bucket effect:", e);
+        }
 
-    onBack();
+        update(updatePayload);
+    }
   };
 
   let content = null;
