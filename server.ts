@@ -81,7 +81,7 @@ app.post('/api/generate-summary', async (req, res) => {
       }
     }
 
-    console.log(`[Backend] Processing request. Task: ${taskType || 'default'}, Model: ${selectedModel}`);
+    console.log(`[Backend] Processing request (Stream). Task: ${taskType || 'default'}, Model: ${selectedModel}`);
 
     const config: any = {
       systemInstruction: systemInstruction,
@@ -118,25 +118,43 @@ app.post('/api/generate-summary', async (req, res) => {
       });
     }
 
-    // Call Gemini API
-    const response = await ai.models.generateContent({
+    // Set headers for SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Call Gemini API with Streaming
+    const response = await ai.models.generateContentStream({
       model: selectedModel,
       contents: contentsInput,
       config: config
     });
 
-    const text = response.text || "";
-    
-    // Return the result as JSON
-    res.json({ text });
+    for await (const chunk of response) {
+      const text = chunk.text;
+      if (text) {
+        // Send data chunk
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
+      }
+    }
+
+    // End stream
+    res.write('data: [DONE]\n\n');
+    res.end();
 
   } catch (error: any) {
     console.error("Backend Gemini Error:", error);
-    // Return error details to frontend
-    res.status(500).json({ 
-      error: error.message || "Internal Server Error",
-      details: error.toString() 
-    });
+    // If headers are already sent, we can't send a JSON error response.
+    // We should send an error event if possible, or just end the stream.
+    if (!res.headersSent) {
+        res.status(500).json({ 
+            error: error.message || "Internal Server Error",
+            details: error.toString() 
+        });
+    } else {
+        res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
+    }
   }
 });
 

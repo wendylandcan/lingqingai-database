@@ -35,6 +35,12 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   const [defRebuttal, setDefRebuttal] = useState(data.defendantRebuttal || "");
   const [showGuide, setShowGuide] = useState(false);
   
+  // Streaming state
+  const [streamingPlSummary, setStreamingPlSummary] = useState("");
+  const [streamingDefSummary, setStreamingDefSummary] = useState("");
+  const [isGeneratingPl, setIsGeneratingPl] = useState(false);
+  const [isGeneratingDef, setIsGeneratingDef] = useState(false);
+  
   // Loading state
   const [isAnalyzing, setIsAnalyzing] = useState(data.status === CaseStatus.ANALYZING_DISPUTE);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -180,17 +186,41 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   useEffect(() => {
     const generateSummaries = async () => {
         // If I am Plaintiff, and I see Defendant's statement is not summarized
-        if (isPlaintiff && data.defenseStatement && !data.defenseSummary) {
-             console.log("Auto-generating defense summary...");
-             const s = await GeminiService.summarizeStatement(data.defenseStatement, "Defendant");
-             if (s) onSubmit({ defenseSummary: s });
+        if (isPlaintiff && data.defenseStatement && !data.defenseSummary && !isGeneratingDef) {
+             console.log("Auto-generating defense summary (Stream)...");
+             setIsGeneratingDef(true);
+             try {
+                const finalSummary = await GeminiService.streamSummarizeStatement(
+                    data.defenseStatement, 
+                    "Defendant", 
+                    (partial) => setStreamingDefSummary(partial)
+                );
+                if (finalSummary) onSubmit({ defenseSummary: finalSummary });
+             } catch(e) {
+                 console.error(e);
+             } finally {
+                 setIsGeneratingDef(false);
+                 setStreamingDefSummary(""); // Clear stream state as it's now in data
+             }
         }
         
         // If I am Defendant, and I see Plaintiff's statement is not summarized
-        if (isDefendant && data.description && !data.plaintiffSummary) {
-             console.log("Auto-generating plaintiff summary...");
-             const s = await GeminiService.summarizeStatement(data.description, "Plaintiff");
-             if (s) onSubmit({ plaintiffSummary: s });
+        if (isDefendant && data.description && !data.plaintiffSummary && !isGeneratingPl) {
+             console.log("Auto-generating plaintiff summary (Stream)...");
+             setIsGeneratingPl(true);
+             try {
+                const finalSummary = await GeminiService.streamSummarizeStatement(
+                    data.description, 
+                    "Plaintiff", 
+                    (partial) => setStreamingPlSummary(partial)
+                );
+                if (finalSummary) onSubmit({ plaintiffSummary: finalSummary });
+             } catch(e) {
+                 console.error(e);
+             } finally {
+                 setIsGeneratingPl(false);
+                 setStreamingPlSummary("");
+             }
         }
     };
     generateSummaries();
@@ -273,7 +303,10 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                 <h4 className="font-bold text-indigo-800 mb-3 text-lg border-b border-indigo-100 pb-2 flex items-center gap-2 font-cute">
                    被告答辩 (对方观点)
                 </h4>
-                <p className="text-slate-700 leading-relaxed text-base relative z-10">{data.defenseSummary || data.defenseStatement}</p>
+                <p className="text-slate-700 leading-relaxed text-base relative z-10">
+                    {data.defenseSummary || streamingDefSummary || data.defenseStatement}
+                    {isGeneratingDef && <span className="animate-pulse inline-block w-1.5 h-4 bg-indigo-500 ml-1 align-middle"></span>}
+                </p>
             </div>
         );
     }
@@ -284,7 +317,10 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                 <h4 className="font-bold text-rose-800 mb-3 text-lg border-b border-rose-100 pb-2 flex items-center gap-2 font-cute">
                    原告起诉 (对方观点)
                 </h4>
-                <p className="text-slate-700 leading-relaxed text-base relative z-10">{data.plaintiffSummary || data.description}</p>
+                <p className="text-slate-700 leading-relaxed text-base relative z-10">
+                    {data.plaintiffSummary || streamingPlSummary || data.description}
+                    {isGeneratingPl && <span className="animate-pulse inline-block w-1.5 h-4 bg-rose-500 ml-1 align-middle"></span>}
+                </p>
             </div>
         );
     }

@@ -172,20 +172,75 @@ export const transcribeAudio = async (base64Audio: string, mimeType: string): Pr
   }
 };
 
-export const summarizeStatement = async (text: string, role: string): Promise<string> => {
+export const streamSummarizeStatement = async (
+  text: string, 
+  role: string, 
+  onChunk: (text: string) => void
+): Promise<string> => {
   if (!text) return "";
-  try {
-    let instruction = `Summarize the ${role}'s statement into 50-100 Chinese characters. Retain facts and emotion. Do NOT include word count (e.g. (96字)). Do NOT use markdown bolding (e.g. **text**).`;
-    let content = `Statement: "${text}"`;
+  
+  let instruction = `Summarize the ${role}'s statement into 50-100 Chinese characters. Retain facts and emotion. Do NOT include word count (e.g. (96字)). Do NOT use markdown bolding (e.g. **text**).`;
+  let content = `Statement: "${text}"`;
 
-    return await callGemini({
-      taskType: 'light', // Routes to gemini-3-flash-preview
-      systemInstruction: instruction,
-      prompt: content
-    });
+  // Use relative path since we are proxying in dev or same origin in prod
+  // If VITE_API_BASE_URL is set, use it (for separate backend deployment)
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+  const API_URL = `${API_BASE}/api/generate-summary`;
+
+  try {
+      const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              taskType: 'light',
+              systemInstruction: instruction,
+              prompt: content
+          })
+      });
+
+      if (!response.ok) throw new Error("Network response was not ok");
+      if (!response.body) throw new Error("No response body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n\n');
+          
+          for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                  const dataStr = line.replace('data: ', '').trim();
+                  if (dataStr === '[DONE]') continue;
+                  
+                  try {
+                      const data = JSON.parse(dataStr);
+                      if (data.text) {
+                          fullText += data.text;
+                          onChunk(fullText); // Update with accumulated text
+                      }
+                      if (data.error) throw new Error(data.error);
+                  } catch (e) {
+                      // ignore parse errors for partial chunks
+                  }
+              }
+          }
+      }
+      return fullText;
   } catch (error) {
-    return text.slice(0, 150) + "...";
+      console.error("Streaming Summary Failed:", error);
+      // Fallback
+      return text.slice(0, 150) + "...";
   }
+};
+
+export const summarizeStatement = async (text: string, role: string): Promise<string> => {
+  // Legacy wrapper for non-streaming calls if any
+  return await streamSummarizeStatement(text, role, () => {});
 };
 
 export const generateCaseTitle = async (description: string): Promise<string> => {
