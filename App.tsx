@@ -859,7 +859,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
         return;
     }
 
-    if (data.status === CaseStatus.CROSS_EXAMINATION) {
+    if (data.status === CaseStatus.CROSS_EXAMINATION || data.status === CaseStatus.ANALYZING_DISPUTE) {
         targetStatus = CaseStatus.DEFENSE_PENDING;
         updatePayload = { status: targetStatus };
     } else if (data.status === CaseStatus.DEBATE) {

@@ -234,10 +234,15 @@ export const MockDb = {
             [CaseStatus.PLAINTIFF_EVIDENCE]: 1,
             [CaseStatus.DEFENSE_PENDING]: 2,
             [CaseStatus.CROSS_EXAMINATION]: 3,
-            [CaseStatus.DEBATE]: 4,
-            [CaseStatus.JUDGE_SELECTION]: 5, // New Phase
-            [CaseStatus.ADJUDICATING]: 6,
-            [CaseStatus.CLOSED]: 7,
+            [CaseStatus.CROSS_EXAMINATION_P_DONE]: 3,
+            [CaseStatus.CROSS_EXAMINATION_D_DONE]: 3,
+            [CaseStatus.ANALYZING_DISPUTE]: 4,
+            [CaseStatus.DEBATE]: 5,
+            [CaseStatus.DEBATE_P_DONE]: 5,
+            [CaseStatus.DEBATE_D_DONE]: 5,
+            [CaseStatus.JUDGE_SELECTION]: 6,
+            [CaseStatus.ADJUDICATING]: 7,
+            [CaseStatus.CLOSED]: 8,
             [CaseStatus.CANCELLED]: 99
           };
           

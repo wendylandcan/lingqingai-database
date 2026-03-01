@@ -40,6 +40,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
+  const isTransitioningRef = React.useRef(false);
 
   // Handlers for "Save Draft / Update State"
   const handleUpdate = (patch: Partial<CaseData>) => {
@@ -79,6 +80,9 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   };
 
   const executePhaseTransition = async (extraUpdates: Partial<CaseData> = {}) => {
+    if (isTransitioningRef.current) return;
+    isTransitioningRef.current = true;
+
     const currentHash = computeContentHash();
     const hasDisputePoints = data.disputePoints && data.disputePoints.length > 0;
     
@@ -87,6 +91,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
     if (hasDisputePoints && data.lastAnalyzedHash === currentHash) {
         // ... Skip AI analysis and go directly to Debate.
         await onSubmit({ status: CaseStatus.DEBATE, ...extraUpdates });
+        isTransitioningRef.current = false;
         return;
     }
 
@@ -116,6 +121,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                 disputePoints: points,
                 lastAnalyzedHash: currentHash // Save the new fingerprint
             });
+            isTransitioningRef.current = false;
         }, 500);
 
     } catch (e: any) {
@@ -124,6 +130,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
         // Revert status on error so user can try again
         // This prevents "Zombie State" where user is stuck in Analyzing forever
         await onSubmit({ status: CaseStatus.CROSS_EXAMINATION });
+        isTransitioningRef.current = false;
     }
   };
 
@@ -156,7 +163,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   // Auto-transition effect
   useEffect(() => {
       const bothFinished = data.plaintiffFinishedCrossExam && data.defendantFinishedCrossExam;
-      if (bothFinished && data.status === CaseStatus.CROSS_EXAMINATION && !isAnalyzing) {
+      if (bothFinished && data.status === CaseStatus.CROSS_EXAMINATION && !isAnalyzing && !isTransitioningRef.current) {
           // Allow ANY user to trigger transition if both are finished.
           // The executePhaseTransition function has idempotency checks (lastAnalyzedHash) 
           // to handle race conditions if both clients trigger simultaneously.
