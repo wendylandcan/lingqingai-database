@@ -82,6 +82,9 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   const executePhaseTransition = async (extraUpdates: Partial<CaseData> = {}) => {
     if (isTransitioningRef.current) return;
     isTransitioningRef.current = true;
+    
+    // Optimistic UI: Show loading immediately to prevent "freeze"
+    setIsAnalyzing(true);
 
     const currentHash = computeContentHash();
     const hasDisputePoints = data.disputePoints && data.disputePoints.length > 0;
@@ -131,6 +134,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
         // This prevents "Zombie State" where user is stuck in Analyzing forever
         await onSubmit({ status: CaseStatus.CROSS_EXAMINATION });
         isTransitioningRef.current = false;
+        setIsAnalyzing(false); // Reset loading state on error
     }
   };
 
@@ -399,18 +403,18 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                   </div>
               )}
 
-              <div className="w-full max-w-md bg-slate-100 rounded-full h-3 overflow-hidden mb-2 relative">
+              <div className="w-full max-w-md bg-rose-100 rounded-full h-3 overflow-hidden mb-2 relative">
                    {/* Progress Bar Background */}
-                   <div className="absolute inset-0 bg-slate-200/50"></div>
+                   <div className="absolute inset-0 bg-rose-200/30"></div>
                    {/* Active Progress */}
                    <div 
-                       className="bg-rose-500 h-full rounded-full transition-all duration-300 ease-linear" 
+                       className="bg-rose-500 h-full rounded-full transition-all duration-300 ease-linear shadow-[0_0_10px_rgba(244,63,94,0.4)]" 
                        style={{ width: `${progress}%` }}
                    ></div>
               </div>
-              <div className="flex justify-between w-full max-w-md text-xs text-slate-500 px-1 mb-4">
+              <div className="flex justify-between w-full max-w-md text-xs text-rose-400 px-1 mb-4">
                   <span>进度</span>
-                  <span className="font-bold">{Math.round(progress)}%</span>
+                  <span className="font-bold text-rose-600">{Math.round(progress)}%</span>
               </div>
               <p className="text-xs text-slate-400">请勿关闭页面</p>
           </div>
