@@ -136,6 +136,11 @@ async function callGemini(params: {
   } catch (error: any) {
     console.error("Gemini API Error:", error);
     const message = error?.message || '';
+    
+    if (message.includes('API key not valid') || message.includes('API_KEY_INVALID') || message.includes('API Key Configuration Error')) {
+        throw new Error("API Key 配置无效或缺失，请检查环境变量设置 (API_KEY)");
+    }
+
     if (message.includes('429') || error.status === 429 || message.includes('Resource exhausted')) {
        throw new Error("调用次数超限，AI 法官需要休息一下，请稍后再试");
     }
@@ -174,7 +179,7 @@ export const summarizeStatement = async (text: string, role: string): Promise<st
     let content = `Statement: "${text}"`;
 
     return await callGemini({
-      taskType: 'light', // <--- 路由至轻量级模型 (gemini-1.5-flash-8b)
+      taskType: 'light', // Routes to gemini-3-flash-preview
       systemInstruction: instruction,
       prompt: content
     });
@@ -184,19 +189,32 @@ export const summarizeStatement = async (text: string, role: string): Promise<st
 };
 
 export const generateCaseTitle = async (description: string): Promise<string> => {
+  if (!description || description.trim().length < 2) return "未命名案件";
+  
   try {
     const res = await callGemini({
       taskType: 'light', // Title generation is a simple task
       systemInstruction: `你是一个法院书记员。请根据用户的案件描述，提炼一个简短的中文案件标题。
-      要求：
-      1. 必须根据案件事实总结，以“案”字结尾（例如“火锅约会迟到案”、“家务分配不均案”）。
-      2. 严格使用简体中文，禁止包含任何英文。
-      3. 长度控制在 4-10 个汉字以内。
-      4. 概括要精准且稍微带点幽默感或生活气息。`,
-      prompt: `案件描述: "${description}"`
+      
+      【严格约束】：
+      1. **格式**：必须以“案”字结尾（例如“火锅约会迟到案”）。
+      2. **长度**：严格控制在 4-10 个汉字以内。
+      3. **内容**：概括精准，带点幽默感或生活气息。
+      4. **纯净输出**：只返回标题文本，严禁包含任何标点、解释、引号或前缀。`,
+      prompt: `案件描述: "${description.slice(0, 500)}"` // Limit input length
     });
-    return res.trim().replace(/["']/g, ''); // Remove quotes if present
+    
+    let title = res.trim().replace(/["'《》]/g, '').replace(/标题：/g, ''); 
+    
+    // Post-processing reinforcement
+    if (title.length > 15) title = title.substring(0, 15);
+    if (!title.endsWith('案')) title += '案';
+    
+    console.log("Generated Case Title:", title);
+    return title;
   } catch (e) {
+    console.error("Case Title Generation Failed:", e);
+    // Fallback strategy: Extract first few nouns or return default
     return "未命名案件";
   }
 };

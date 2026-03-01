@@ -212,6 +212,15 @@ export const MockDb = {
       const freshDb = getDb();
       const local = freshDb[caseId];
 
+      // --- FLASH SCREEN FIX ---
+      // If the local data was updated by a USER ACTION very recently (< 5s),
+      // we trust the local optimistic update over the remote data.
+      // This prevents the UI from reverting to the old state while the Supabase write propagates.
+      if (local && local._isUserAction && (Date.now() - local.lastUpdateDate < 5000)) {
+          console.log("[Sync] Local data is fresh (user action < 5s), ignoring potential stale remote data.");
+          return local;
+      }
+
       if (error || !remoteCase) {
         // If fetch fails, return local version if exists, or null
         return local || null;
@@ -240,6 +249,14 @@ export const MockDb = {
           // Stability Logic:
           // We removed the "forward progress" protection to allow for the "Bucket Effect" (Phase Rollback).
           // If the server says we are in an earlier phase, we must respect it to ensure synchronization.
+
+          // 3. Recent Action Protection (Optimistic UI)
+          // If local was updated very recently (< 5s) and is AHEAD of remote, trust local.
+          // This prevents the "flash back" caused by stale reads immediately after a write.
+          if (Date.now() - local.lastUpdateDate < 5000 && localLevel > remoteLevel) {
+               console.log(`[Sync] Trusting local (Recent Action). Local: ${localS} > Remote: ${remoteS}`);
+               return local;
+          }
 
           // 4. Appeal Protection (Appeal from Closed -> Judge Selection/Debate)
           // If we locally moved BACKWARDS (e.g., from Closed to Judge Selection), and remote is still Closed (ahead),
@@ -294,7 +311,8 @@ export const MockDb = {
 
         judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
         status: remoteCase.status as CaseStatus,
-        verdict: remoteCase.verdict
+        verdict: remoteCase.verdict,
+        _isUserAction: false // Mark as synced from cloud
       };
 
       // Update Local Cache
@@ -315,7 +333,7 @@ export const MockDb = {
     if (!db[id]) throw new Error("Case not found");
     
     // 1. Optimistic Local Update
-    const updatedCase = { ...db[id], ...updates, lastUpdateDate: Date.now() };
+    const updatedCase = { ...db[id], ...updates, lastUpdateDate: Date.now(), _isUserAction: true };
     db[id] = updatedCase;
     saveDb(db);
 
@@ -386,6 +404,13 @@ export const MockDb = {
         // 1. Update/Insert remote cases to local
         remoteCases.forEach(remoteCase => {
             const local = db[remoteCase.id];
+            
+            // --- FLASH SCREEN FIX ---
+            // Skip update if local data is fresh from user action
+            if (local && local._isUserAction && (Date.now() - local.lastUpdateDate < 5000)) {
+                return;
+            }
+
             const localCase: CaseData = {
                 id: remoteCase.id,
                 shareCode: remoteCase.share_code,

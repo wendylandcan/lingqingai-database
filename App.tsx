@@ -819,7 +819,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
     update({ 
       defenseStatement: "（被告缺席，放弃答辩）",
       defenseSummary: "被告未出庭应诉，视为放弃答辩权利。",
-      status: CaseStatus.ADJUDICATING,
+      status: CaseStatus.JUDGE_SELECTION,
       disputePoints: [] 
     });
     setShowDefaultJudgmentConfirm(false);
@@ -880,16 +880,13 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
                  defenseSummary: undefined 
              };
         } else {
-            // Check if debate is actually finished
-            if (!data.plaintiffFinishedDebate || !data.defendantFinishedDebate) {
-                 targetStatus = CaseStatus.DEBATE;
-                 updatePayload = { 
-                     status: targetStatus,
-                     disputePoints: data.disputePoints,
-                     plaintiffFinishedDebate: false,
-                     defendantFinishedDebate: false
-                 };
-            }
+             // Allow going back to debate, and reset the finished flags to prevent auto-forwarding
+             targetStatus = CaseStatus.DEBATE;
+             updatePayload = { 
+                 status: targetStatus,
+                 plaintiffFinishedDebate: false,
+                 defendantFinishedDebate: false
+             };
         }
     } else if (data.status === CaseStatus.CLOSED) {
         targetStatus = CaseStatus.JUDGE_SELECTION;

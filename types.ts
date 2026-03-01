@@ -111,6 +111,8 @@ export interface CaseData {
   status: CaseStatus;
   verdict?: Verdict;
   verdictCache?: Record<string, Verdict>; // Cache for verdicts by hash
+  
+  _isUserAction?: boolean; // Internal flag: Was this last updated by a local user action?
 }
 
 export interface Verdict {

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { GoogleGenAI } from '@google/genai';
@@ -14,18 +15,39 @@ app.use(express.json({ limit: '50mb' }));
 
 // Initialize Gemini Client
 // Use GEMINI_API_KEY by default (standard environment), fallback to API_KEY (user selected)
-const rawApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-const apiKey = rawApiKey ? rawApiKey.trim() : "";
+const getApiKey = () => {
+  const keys = [
+    process.env.GEMINI_API_KEY,
+    process.env.API_KEY,
+    process.env.GOOGLE_API_KEY,
+    process.env.VITE_GEMINI_API_KEY
+  ];
+  
+  for (const key of keys) {
+    if (key && key.trim().length > 10 && !key.includes('YOUR_API_KEY') && key !== 'undefined' && key !== 'null') {
+      return key.trim();
+    }
+  }
+  return "";
+};
+
+const apiKey = getApiKey();
 
 console.log("--- API Key Configuration Check ---");
 console.log(`GEMINI_API_KEY present: ${!!process.env.GEMINI_API_KEY}`);
 console.log(`API_KEY present: ${!!process.env.API_KEY}`);
+console.log(`GOOGLE_API_KEY present: ${!!process.env.GOOGLE_API_KEY}`);
+console.log(`VITE_GEMINI_API_KEY present: ${!!process.env.VITE_GEMINI_API_KEY}`);
 console.log(`Active API Key length: ${apiKey.length}`);
-console.log(`Active API Key starts with: ${apiKey.substring(0, 4)}...`);
+if (apiKey.length > 4) {
+  console.log(`Active API Key starts with: ${apiKey.substring(0, 4)}...`);
+} else {
+  console.log(`Active API Key is too short or invalid.`);
+}
 console.log("-----------------------------------");
 
 if (!apiKey) {
-  console.error("CRITICAL: No API Key found in environment (GEMINI_API_KEY or API_KEY).");
+  console.error("CRITICAL: No valid API Key found in environment (GEMINI_API_KEY, API_KEY, GOOGLE_API_KEY, or VITE_GEMINI_API_KEY).");
 }
 
 const ai = new GoogleGenAI({ apiKey: apiKey });
@@ -37,10 +59,8 @@ const MODELS = {
   HEAVY: 'gemini-3-flash-preview', 
 
   // 轻量级边缘任务（速度快、成本低）：摘要、标题生成、润色
-  // User Request: 'gemini-1.5-flash-8b'
-  // NOTE: If you encounter 404 errors with 'gemini-1.5-flash-8b', please check if your API key supports this model 
-  // or try 'gemini-1.5-flash-8b-latest' or 'gemini-flash-lite-latest'.
-  LIGHT: 'gemini-1.5-flash-8b'     
+  // User Request: Switch to Gemini 3 Flash Preview for full stack
+  LIGHT: 'gemini-3-flash-preview'     
 };
 
 // API Route: /api/generate-summary
@@ -89,6 +109,15 @@ app.post('/api/generate-summary', async (req, res) => {
       contentsInput = prompt;
     }
 
+    // Fail fast if API Key is missing
+    if (!apiKey) {
+      console.error("Backend Error: API Key is missing.");
+      return res.status(500).json({ 
+        error: "API Key Configuration Error", 
+        details: "Server environment is missing a valid API Key (GEMINI_API_KEY, API_KEY, etc.)." 
+      });
+    }
+
     // Call Gemini API
     const response = await ai.models.generateContent({
       model: selectedModel,
@@ -109,6 +138,16 @@ app.post('/api/generate-summary', async (req, res) => {
       details: error.toString() 
     });
   }
+});
+
+// Debug Endpoint: Check API Key Status
+app.get('/api/debug/status', (req, res) => {
+  res.json({ 
+    status: 'ok',
+    apiKeyConfigured: !!apiKey,
+    apiKeyLength: apiKey.length,
+    apiKeyPrefix: apiKey.substring(0, 4) + '...'
+  });
 });
 
 // Vite Middleware (for development environment)
