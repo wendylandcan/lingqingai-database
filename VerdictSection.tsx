@@ -13,7 +13,8 @@ import {
   Hourglass,
   AlertCircle,
   X,
-  Key
+  Key,
+  Sparkles
 } from 'lucide-react';
 import { 
   CaseData, 
@@ -297,30 +298,76 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
 
   const renderOpposingStatement = () => {
     if (isPlaintiff) {
+        const hasSummary = !!data.defenseSummary;
+        const isGen = isGeneratingDef;
+        const streamText = streamingDefSummary;
+
         return (
-            <div className="bg-white p-6 rounded-xl border-l-4 border-indigo-400 shadow-sm relative overflow-hidden">
+            <div className="bg-white p-6 rounded-xl border-l-4 border-indigo-400 shadow-sm relative overflow-hidden min-h-[160px] flex flex-col">
                 <div className="absolute right-0 top-0 p-4 opacity-5"><User size={100} className="text-indigo-500" /></div>
                 <h4 className="font-bold text-indigo-800 mb-3 text-lg border-b border-indigo-100 pb-2 flex items-center gap-2 font-cute">
-                   被告答辩 (对方观点)
+                   被告答辩 (AI 摘要)
                 </h4>
-                <p className="text-slate-700 leading-relaxed text-base relative z-10">
-                    {data.defenseSummary || streamingDefSummary || data.defenseStatement}
-                    {isGeneratingDef && <span className="animate-pulse inline-block w-1.5 h-4 bg-indigo-500 ml-1 align-middle"></span>}
-                </p>
+                <div className="text-slate-700 leading-relaxed text-base relative z-10 flex-1">
+                    {hasSummary ? (
+                        // Stage 3: Done
+                        <div>{data.defenseSummary}</div>
+                    ) : isGen ? (
+                        streamText ? (
+                            // Stage 2: Streaming
+                            <span>
+                                {streamText}
+                                <span className="inline-block w-1.5 h-5 bg-indigo-500 ml-1 align-middle animate-pulse"></span>
+                            </span>
+                        ) : (
+                            // Stage 1: Loading
+                            <div className="flex items-center gap-2 text-indigo-600 animate-pulse mt-4">
+                                <Sparkles size={18} />
+                                <span>AI 正在总结被告论点中...</span>
+                            </div>
+                        )
+                    ) : (
+                        // Fallback
+                        <div className="text-slate-400 italic mt-4">
+                            {data.defenseStatement ? "准备生成摘要..." : "等待被告提交答辩..."}
+                        </div>
+                    )}
+                </div>
             </div>
         );
     }
     if (isDefendant) {
+        const hasSummary = !!data.plaintiffSummary;
+        const isGen = isGeneratingPl;
+        const streamText = streamingPlSummary;
+
         return (
-            <div className="bg-white p-6 rounded-xl border-l-4 border-rose-400 shadow-sm relative overflow-hidden">
+            <div className="bg-white p-6 rounded-xl border-l-4 border-rose-400 shadow-sm relative overflow-hidden min-h-[160px] flex flex-col">
                 <div className="absolute right-0 top-0 p-4 opacity-5"><User size={100} className="text-rose-500" /></div>
                 <h4 className="font-bold text-rose-800 mb-3 text-lg border-b border-rose-100 pb-2 flex items-center gap-2 font-cute">
-                   原告起诉 (对方观点)
+                   原告起诉 (AI 摘要)
                 </h4>
-                <p className="text-slate-700 leading-relaxed text-base relative z-10">
-                    {data.plaintiffSummary || streamingPlSummary || data.description}
-                    {isGeneratingPl && <span className="animate-pulse inline-block w-1.5 h-4 bg-rose-500 ml-1 align-middle"></span>}
-                </p>
+                <div className="text-slate-700 leading-relaxed text-base relative z-10 flex-1">
+                    {hasSummary ? (
+                        <div>{data.plaintiffSummary}</div>
+                    ) : isGen ? (
+                        streamText ? (
+                            <span>
+                                {streamText}
+                                <span className="inline-block w-1.5 h-5 bg-rose-500 ml-1 align-middle animate-pulse"></span>
+                            </span>
+                        ) : (
+                            <div className="flex items-center gap-2 text-rose-600 animate-pulse mt-4">
+                                <Sparkles size={18} />
+                                <span>AI 正在总结原告论点中...</span>
+                            </div>
+                        )
+                    ) : (
+                        <div className="text-slate-400 italic mt-4">
+                            {data.description ? "准备生成摘要..." : "等待原告提交起诉..."}
+                        </div>
+                    )}
+                </div>
             </div>
         );
     }
