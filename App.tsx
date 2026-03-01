@@ -326,7 +326,30 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
   const [isDeliberating, setIsDeliberating] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  const computeVerdictHash = () => {
+    const relevantContent = {
+        desc: data.description,
+        defStmt: data.defenseStatement,
+        plReb: data.plaintiffRebuttal,
+        defReb: data.defendantRebuttal || "",
+        ev: data.evidence.map(e => `${e.id}-${e.description}-${e.isContested}`).join('|'),
+        defEv: data.defendantEvidence.map(e => `${e.id}-${e.description}-${e.isContested}`).join('|'),
+        disputePoints: data.disputePoints.map(p => `${p.id}-${p.plaintiffArg}-${p.defendantArg}`).join('|'),
+        persona: persona // Persona is part of the hash for caching
+    };
+    return JSON.stringify(relevantContent);
+  };
+
   const handleJudgement = async () => {
+    const currentHash = computeVerdictHash();
+
+    // Cache Hit Check
+    if (data.verdict && data.lastVerdictHash === currentHash && data.judgePersona === persona) {
+        console.log("Verdict Cache Hit! Skipping AI generation.");
+        onSubmit({ status: CaseStatus.CLOSED });
+        return;
+    }
+
     setIsDeliberating(true);
     setProgress(0);
     
@@ -353,7 +376,12 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
       setProgress(100);
 
       setTimeout(() => {
-          onSubmit({ verdict, judgePersona: persona, status: CaseStatus.CLOSED });
+          onSubmit({ 
+              verdict, 
+              judgePersona: persona, 
+              status: CaseStatus.CLOSED,
+              lastVerdictHash: currentHash // Save the new fingerprint
+          });
       }, 500);
     } catch (e) { 
         clearInterval(timer);
@@ -766,6 +794,11 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
         return;
     }
 
+    if (data.status === CaseStatus.CLOSED) {
+        update({ status: CaseStatus.ADJUDICATING });
+        return;
+    }
+
     onBack();
   };
 
@@ -1089,7 +1122,9 @@ const App = () => {
                         <p className="text-xs mt-1 text-slate-300">发起的案件将显示在这里</p>
                     </div>
                 ) : (
-                    myCases.map(c => {
+                    [...myCases]
+                        .sort((a, b) => a.createdDate - b.createdDate)
+                        .map(c => {
                          const isMyCase = c.plaintiffId === user.id;
                          return (
                             <div 

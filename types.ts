@@ -102,6 +102,7 @@ export interface CaseData {
   
   // State Tracking
   lastAnalyzedHash?: string; // Fingerprint of content when disputePoints were last generated
+  lastVerdictHash?: string; // Fingerprint of content when verdict was last generated
 
   judgePersona: JudgePersona;
   status: CaseStatus;
