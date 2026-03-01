@@ -411,10 +411,14 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
 
     console.log("Verdict Cache Check - Hash:", currentHash);
     
-    // Check Cache
-    if (data.verdictCache && data.verdictCache[currentHash]) {
-        console.log("Verdict Cache HIT! Using cached verdict.");
-        const cachedVerdict = data.verdictCache[currentHash];
+    // Check Cache (Smart Caching)
+    // 如果：计算出的指纹 === data.verdict_hash 且 选择的法官 === data.judge_persona 且 data.verdict 已存在。
+    if (
+        currentHash === data.verdict_hash && 
+        persona === data.judgePersona && 
+        data.verdict
+    ) {
+        console.log("Verdict Cache HIT! Using existing verdict.");
         
         // Simulate a short loading for better UX (so it doesn't feel like a glitch)
         await onSubmit({ 
@@ -426,8 +430,6 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         
         setTimeout(async () => {
              await onSubmit({ 
-                 verdict: cachedVerdict,
-                 judgePersona: persona, 
                  status: CaseStatus.CLOSED,
              });
         }, 800);
@@ -460,15 +462,12 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
       // 3. PERSIST & SHARE (Result Sharing)
       // Save the result to DB and unlock the state.
       // Both users will see the verdict once this update propagates.
-      // Update Cache
-      const newCache = { ...(data.verdictCache || {}), [currentHash]: verdict };
-
       setTimeout(async () => {
           await onSubmit({ 
               verdict, 
               judgePersona: persona, 
               status: CaseStatus.CLOSED,
-              verdictCache: newCache // Save to cache
+              verdict_hash: currentHash // Save the new hash
           });
       }, 500);
 

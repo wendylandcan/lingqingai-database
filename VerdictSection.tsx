@@ -36,7 +36,7 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
   const [showGuide, setShowGuide] = useState(false);
   
   // Loading state
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(data.status === CaseStatus.ANALYZING_DISPUTE);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
@@ -403,14 +403,10 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
                    {/* Progress Bar Background */}
                    <div className="absolute inset-0 bg-slate-200/50"></div>
                    {/* Active Progress */}
-                   {isAnalyzing ? (
-                        <div 
-                            className="bg-purple-600 h-full rounded-full transition-all duration-300 ease-linear" 
-                            style={{ width: `${progress}%` }}
-                        ></div>
-                    ) : (
-                        <div className="bg-purple-600 h-full rounded-full w-full opacity-30"></div>
-                    )}
+                   <div 
+                       className="bg-rose-500 h-full rounded-full transition-all duration-300 ease-linear" 
+                       style={{ width: `${progress}%` }}
+                   ></div>
               </div>
               <div className="flex justify-between w-full max-w-md text-xs text-slate-500 px-1 mb-4">
                   <span>进度</span>
