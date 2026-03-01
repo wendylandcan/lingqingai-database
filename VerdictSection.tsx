@@ -86,27 +86,17 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
     // If we have existing points AND the content hasn't changed since the last analysis...
     if (hasDisputePoints && data.lastAnalyzedHash === currentHash) {
         // ... Skip AI analysis and go directly to Debate.
-        // This preserves the user's previous inputs in the Debate phase.
-        // Merge extraUpdates (flags) to ensure atomic update
         await onSubmit({ status: CaseStatus.DEBATE, ...extraUpdates });
         return;
     }
 
     // Otherwise (New case OR Content modified), run AI analysis.
-    
-    // 1. Enter Analyzing State
+    // 1. Enter Analyzing State (This triggers the UI update via useEffect)
     await onSubmit({ status: CaseStatus.ANALYZING_DISPUTE, ...extraUpdates });
 
-    setIsAnalyzing(true);
-    setProgress(0);
-    setErrorMsg(""); 
-
-    const timer = setInterval(() => {
-      setProgress(old => {
-        if (old >= 99) return 99; 
-        return old + 0.333; 
-      });
-    }, 100);
+    // Note: We do NOT set isAnalyzing(true) here manually anymore.
+    // We rely on the useEffect below to detect the status change and start the animation.
+    // This ensures consistency across refreshes and different clients.
 
     try {
         const points = await GeminiService.analyzeDisputeFocus(
@@ -118,24 +108,50 @@ export const VerdictSection: React.FC<VerdictSectionProps> = ({ data, onSubmit, 
             data.evidence 
         );
         
-        clearInterval(timer);
-        setProgress(100);
-
+        // We don't need to manually stop progress here, the status change will unmount/reset UI.
+        
         setTimeout(async () => {
             await onSubmit({ 
                 status: CaseStatus.DEBATE,
                 disputePoints: points,
                 lastAnalyzedHash: currentHash // Save the new fingerprint
             });
-        }, 800);
+        }, 500);
 
     } catch (e: any) {
-        clearInterval(timer);
         console.error(e);
         setErrorMsg(e.message || "AI 分析遇到问题，请检查网络后重试。");
-        setIsAnalyzing(false);
+        // Revert status on error so user can try again
+        // This prevents "Zombie State" where user is stuck in Analyzing forever
+        await onSubmit({ status: CaseStatus.CROSS_EXAMINATION });
     }
   };
+
+  // Sync "Analyzing" state and progress bar with data.status
+  useEffect(() => {
+      let timer: NodeJS.Timeout;
+      
+      if (data.status === CaseStatus.ANALYZING_DISPUTE) {
+          setIsAnalyzing(true);
+          // Start progress animation
+          timer = setInterval(() => {
+              setProgress(old => {
+                  // Asymptote to 99%
+                  if (old >= 99) return 99;
+                  // Slow down as we get closer
+                  const increment = old > 80 ? 0.2 : 0.5;
+                  return old + increment;
+              });
+          }, 100);
+      } else {
+          setIsAnalyzing(false);
+          setProgress(0);
+      }
+
+      return () => {
+          if (timer) clearInterval(timer);
+      };
+  }, [data.status]);
 
   // Auto-transition effect
   useEffect(() => {

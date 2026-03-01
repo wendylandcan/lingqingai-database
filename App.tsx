@@ -339,8 +339,9 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
 
 const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Partial<CaseData>) => Promise<void> | void }) => {
   const [persona, setPersona] = useState(data.judgePersona);
-  // Use data.isDeliberating (synced) or local state as fallback
-  const isDeliberating = data.isDeliberating || false;
+  // Use data.isDeliberating (synced) or fallback to checking lastVerdictHash for "THINKING" signal
+  // This ensures sync works even if is_deliberating column is missing in DB
+  const isDeliberating = data.isDeliberating || data.lastVerdictHash === "THINKING";
   const [progress, setProgress] = useState(0);
 
   // Sync persona from server (if changed by other user)
@@ -382,7 +383,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
 
   const handleJudgement = async () => {
     // Double check if already deliberating or closed to prevent race conditions
-    if (data.isDeliberating || data.status === CaseStatus.CLOSED) {
+    if (isDeliberating || data.status === CaseStatus.CLOSED) {
         console.log("Already deliberating or closed, skipping generation.");
         return;
     }
@@ -398,7 +399,12 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
 
     // Start Deliberation (Syncs to other user)
     // We set judgePersona here again just to be safe
-    onSubmit({ isDeliberating: true, judgePersona: persona });
+    // We also set lastVerdictHash to "THINKING" as a robust signal for the other client
+    onSubmit({ 
+        isDeliberating: true, 
+        judgePersona: persona,
+        lastVerdictHash: "THINKING" 
+    });
     
     // Local progress is handled by useEffect now
     
@@ -425,7 +431,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
       }, 500);
     } catch (e) { 
         alert("AI 法官忙碌中: " + (e as any).message); 
-        onSubmit({ isDeliberating: false }); // Reset on error
+        onSubmit({ isDeliberating: false, lastVerdictHash: "" }); // Reset on error
         setProgress(0); 
     } 
   };
