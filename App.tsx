@@ -339,8 +339,25 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
 
 const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Partial<CaseData>) => Promise<void> | void }) => {
   const [persona, setPersona] = useState(data.judgePersona);
-  const [isDeliberating, setIsDeliberating] = useState(false);
+  // Use data.isDeliberating (synced) or local state as fallback
+  const isDeliberating = data.isDeliberating || false;
   const [progress, setProgress] = useState(0);
+
+  // Sync progress if deliberating
+  useEffect(() => {
+    if (isDeliberating) {
+        setProgress(0);
+        const timer = setInterval(() => {
+            setProgress(old => {
+                if (old >= 95) {
+                    return old < 99 ? old + 0.05 : 99;
+                }
+                return old + 0.4; 
+            });
+        }, 200);
+        return () => clearInterval(timer);
+    }
+  }, [isDeliberating]);
 
   const computeVerdictHash = () => {
     const relevantContent = {
@@ -366,18 +383,11 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         return;
     }
 
-    setIsDeliberating(true);
-    setProgress(0);
+    // Start Deliberation (Syncs to other user)
+    onSubmit({ isDeliberating: true, judgePersona: persona });
     
-    const timer = setInterval(() => {
-      setProgress(old => {
-        if (old >= 95) {
-            return old < 99 ? old + 0.05 : 99;
-        }
-        return old + 0.4; 
-      });
-    }, 200);
-
+    // Local progress is handled by useEffect now
+    
     try {
       const verdict = await GeminiService.generateVerdict(
         data.category, data.description, data.demands, data.defenseStatement,
@@ -388,7 +398,6 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         persona
       );
       
-      clearInterval(timer);
       setProgress(100);
 
       setTimeout(() => {
@@ -396,13 +405,13 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
               verdict, 
               judgePersona: persona, 
               status: CaseStatus.CLOSED,
-              lastVerdictHash: currentHash // Save the new fingerprint
+              lastVerdictHash: currentHash, // Save the new fingerprint
+              isDeliberating: false // Stop deliberation
           });
       }, 500);
     } catch (e) { 
-        clearInterval(timer);
         alert("AI 法官忙碌中: " + (e as any).message); 
-        setIsDeliberating(false); 
+        onSubmit({ isDeliberating: false }); // Reset on error
         setProgress(0); 
     } 
   };
@@ -805,7 +814,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
         }
     } else if (data.status === CaseStatus.CLOSED) {
         targetStatus = CaseStatus.ADJUDICATING;
-        updatePayload = { status: targetStatus };
+        updatePayload = { status: targetStatus, isDeliberating: false };
     } else if (data.status === CaseStatus.CANCELLED) {
         onBack();
         return;
@@ -934,7 +943,8 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
         onAppeal={() => {
             update({ 
                 status: CaseStatus.ADJUDICATING,
-                disputePoints: data.disputePoints
+                disputePoints: data.disputePoints,
+                isDeliberating: false // Ensure we reset this
             });
         }} 
       />;
@@ -960,7 +970,16 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
       <header className="bg-rose-600 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center">
         <div className="flex items-center gap-2">
           <button onClick={handleStepBack}><ChevronLeft /></button>
-          <span className="font-bold font-cute">{title}</span>
+          <span 
+            className={`font-bold font-cute ${data.status === CaseStatus.CLOSED ? 'cursor-pointer hover:underline' : ''}`}
+            onClick={() => {
+                if (data.status === CaseStatus.CLOSED) {
+                    handleStepBack();
+                }
+            }}
+          >
+            {title}
+          </span>
         </div>
         <div className="flex items-center gap-3">
            <button onClick={onBack} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all" title="返回首页">

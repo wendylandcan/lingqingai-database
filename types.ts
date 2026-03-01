@@ -103,6 +103,8 @@ export interface CaseData {
   // State Tracking
   lastAnalyzedHash?: string; // Fingerprint of content when disputePoints were last generated
   lastVerdictHash?: string; // Fingerprint of content when verdict was last generated
+  
+  isDeliberating?: boolean; // New: Is AI currently generating a verdict?
 
   judgePersona: JudgePersona;
   status: CaseStatus;

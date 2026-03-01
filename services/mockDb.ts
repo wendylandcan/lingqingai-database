@@ -47,6 +47,7 @@ export const MockDb = {
       disputePoints: [], // Initialize empty dispute points
       plaintiffFinishedDebate: false,
       defendantFinishedDebate: false,
+      isDeliberating: false, // Initialize as false
       judgePersona: JudgePersona.BORDER_COLLIE, // Default to Border Collie
       status: CaseStatus.DRAFTING
     };
@@ -163,6 +164,10 @@ export const MockDb = {
         defendantFinishedDebate: remoteCase.defendant_finished_debate || false,
         // FIX: Map last_analyzed_hash
         lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
+        lastVerdictHash: remoteCase.last_verdict_hash || (local && local.lastVerdictHash),
+        
+        isDeliberating: remoteCase.is_deliberating ?? false,
+
         judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
         status: remoteCase.status as CaseStatus,
         verdict: remoteCase.verdict
@@ -281,6 +286,8 @@ export const MockDb = {
         // FIX: Map last_analyzed_hash with fallback to local to ensure 'Skip Analysis' logic works
         lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
         lastVerdictHash: remoteCase.last_verdict_hash || (local && local.lastVerdictHash),
+        
+        isDeliberating: remoteCase.is_deliberating ?? false,
 
         judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
         status: remoteCase.status as CaseStatus,
@@ -337,6 +344,8 @@ export const MockDb = {
         // FIX: Ensure lastAnalyzedHash is synced to cloud
         if (updates.lastAnalyzedHash !== undefined) payload.last_analyzed_hash = updates.lastAnalyzedHash;
         if (updates.lastVerdictHash !== undefined) payload.last_verdict_hash = updates.lastVerdictHash;
+        
+        if (updates.isDeliberating !== undefined) payload.is_deliberating = updates.isDeliberating;
 
         if (updates.verdict !== undefined) payload.verdict = updates.verdict;
         if (updates.judgePersona !== undefined) payload.judge_persona = updates.judgePersona;
@@ -401,6 +410,7 @@ export const MockDb = {
                 defendantFinishedDebate: remoteCase.defendant_finished_debate ?? (local && local.defendantFinishedDebate) ?? false,
                 lastAnalyzedHash: remoteCase.last_analyzed_hash || (local && local.lastAnalyzedHash), 
                 lastVerdictHash: remoteCase.last_verdict_hash || (local && local.lastVerdictHash),
+                isDeliberating: remoteCase.is_deliberating ?? false,
                 judgePersona: remoteCase.judge_persona || JudgePersona.BORDER_COLLIE,
                 status: remoteCase.status as CaseStatus,
                 verdict: remoteCase.verdict
