@@ -343,6 +343,13 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
   const isDeliberating = data.isDeliberating || false;
   const [progress, setProgress] = useState(0);
 
+  // Sync persona from server (if changed by other user)
+  useEffect(() => {
+    if (data.judgePersona && data.judgePersona !== persona) {
+        setPersona(data.judgePersona);
+    }
+  }, [data.judgePersona]);
+
   // Sync progress if deliberating
   useEffect(() => {
     if (isDeliberating) {
@@ -374,6 +381,12 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
   };
 
   const handleJudgement = async () => {
+    // Double check if already deliberating or closed to prevent race conditions
+    if (data.isDeliberating || data.status === CaseStatus.CLOSED) {
+        console.log("Already deliberating or closed, skipping generation.");
+        return;
+    }
+
     const currentHash = computeVerdictHash();
 
     // Cache Hit Check
@@ -384,6 +397,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
     }
 
     // Start Deliberation (Syncs to other user)
+    // We set judgePersona here again just to be safe
     onSubmit({ isDeliberating: true, judgePersona: persona });
     
     // Local progress is handled by useEffect now
@@ -414,6 +428,12 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         onSubmit({ isDeliberating: false }); // Reset on error
         setProgress(0); 
     } 
+  };
+
+  const handlePersonaSelect = (id: JudgePersona) => {
+      setPersona(id);
+      // Sync immediately so other user sees the selection
+      onSubmit({ judgePersona: id });
   };
 
   const personas = [
@@ -488,7 +508,7 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         {personas.map(p => (
           <button 
             key={p.id} 
-            onClick={() => setPersona(p.id)} 
+            onClick={() => handlePersonaSelect(p.id)} 
             className={`flex items-center p-4 rounded-xl border-2 transition-all text-left group ${
               persona === p.id 
                 ? 'border-rose-500 bg-rose-50 shadow-md scale-[1.02]' 
@@ -692,7 +712,7 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
           timeout = setTimeout(() => {
               console.log('执行防抖后的刷新...');
               load(true);
-          }, 1000); // 1 second debounce
+          }, 300); // 300ms debounce for snappier updates
       };
       return () => clearTimeout(timeout);
   }, [caseId]); // Re-create debounce when caseId changes
