@@ -1170,7 +1170,8 @@ const App = () => {
                     </div>
                 ) : (
                     [...myCases]
-                        .sort((a, b) => a.createdDate - b.createdDate)
+                        // Sort by createdDate descending (Newest First)
+                        .sort((a, b) => (b.createdDate || 0) - (a.createdDate || 0))
                         .map(c => {
                          const isMyCase = c.plaintiffId === user.id;
                          return (

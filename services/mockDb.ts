@@ -138,7 +138,7 @@ export const MockDb = {
       const localCase: CaseData = {
         id: remoteCase.id,
         shareCode: remoteCase.share_code,
-        createdDate: new Date(remoteCase.created_at).getTime(),
+        createdDate: remoteCase.created_at ? new Date(remoteCase.created_at).getTime() : Date.now(),
         lastUpdateDate: Date.now(),
         plaintiffId: remoteCase.plaintiff_id,
         defendantId: remoteCase.defendant_id,
