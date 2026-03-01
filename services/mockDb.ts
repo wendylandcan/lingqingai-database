@@ -251,25 +251,30 @@ export const MockDb = {
           const localLevel = statusOrder[localS] || 0;
           const remoteLevel = statusOrder[remoteS] || 0;
 
+          // Debug Sync
+          if (localS !== remoteS || localLevel !== remoteLevel) {
+              console.log(`[Sync Debug] Local: ${localS}(${localLevel}), Remote: ${remoteS}(${remoteLevel})`);
+              console.log(`[Sync Debug] Remote Flags: P_Debate=${remoteCase.plaintiff_finished_debate}, D_Debate=${remoteCase.defendant_finished_debate}`);
+          }
+
           // Stability Logic:
           // We removed the "forward progress" protection to allow for the "Bucket Effect" (Phase Rollback).
           // If the server says we are in an earlier phase, we must respect it to ensure synchronization.
 
           // 3. Recent Action Protection (Optimistic UI)
-          // If local was updated very recently (< 5s) and is AHEAD of remote, trust local.
+          // If local was updated very recently (< 5s) by a USER ACTION and is AHEAD of remote, trust local.
           // This prevents the "flash back" caused by stale reads immediately after a write.
-          if (Date.now() - local.lastUpdateDate < 5000 && localLevel > remoteLevel) {
-               console.log(`[Sync] Trusting local (Recent Action). Local: ${localS} > Remote: ${remoteS}`);
+          // FIX: Added local._isUserAction check to ensure we don't block syncs just because syncUserCases ran recently.
+          if (local._isUserAction && Date.now() - local.lastUpdateDate < 5000 && localLevel > remoteLevel) {
+               console.log(`[Sync] Trusting local (Recent User Action). Local: ${localS} > Remote: ${remoteS}`);
                return local;
           }
 
-          // 4. Appeal Protection (Appeal from Closed -> Judge Selection/Debate)
+          // 4. Appeal Protection (Appeal from Closed -> Judge Selection)
           // If we locally moved BACKWARDS (e.g., from Closed to Judge Selection), and remote is still Closed (ahead),
           // we should trust Local (user intent) over Remote (stale state).
-          // CRITICAL FIX: Do NOT protect ADJUDICATING. If local is ADJUDICATING and remote is CLOSED, 
-          // it means the verdict is ready and we MUST sync it!
-          if ((localS === CaseStatus.JUDGE_SELECTION || localS === CaseStatus.DEBATE) && remoteLevel === 7) {
-               console.log(`[Sync] Ignoring remote data (Appeal/Back Action). Local: ${localS} < Remote: CLOSED`);
+          if (localS === CaseStatus.JUDGE_SELECTION && remoteLevel === 8) {
+               console.log(`[Sync] Ignoring remote data (Appeal Action). Local: ${localS} < Remote: CLOSED`);
                return local;
           }
       }
