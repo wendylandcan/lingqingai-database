@@ -448,17 +448,20 @@ const AdjudicationStep = ({ data, onSubmit }: { data: CaseData, onSubmit: (d: Pa
         data.verdict
     ) {
         console.log("Verdict Cache HIT! Using existing verdict.");
-        
+
+        // 提示用户使用了缓存判决
+        alert("检测到案情和法官未变更，直接使用原判决结果。\n\n如需重新审理，请补充新证据或修改陈述后再申请重审。");
+
         // Simulate a short loading for better UX (so it doesn't feel like a glitch)
-        await onSubmit({ 
-            status: CaseStatus.ADJUDICATING, 
-            judgePersona: persona 
+        await onSubmit({
+            status: CaseStatus.ADJUDICATING,
+            judgePersona: persona
         });
-        
+
         setProgress(100); // Jump to full
-        
+
         setTimeout(async () => {
-             await onSubmit({ 
+             await onSubmit({
                  status: CaseStatus.CLOSED,
              });
         }, 800);
@@ -917,8 +920,13 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
              };
         }
     } else if (data.status === CaseStatus.CLOSED) {
+        // 从结案状态返回，保留判决和 hash 用于缓存
         targetStatus = CaseStatus.JUDGE_SELECTION;
-        updatePayload = { status: targetStatus, isDeliberating: false };
+        updatePayload = {
+            status: targetStatus,
+            isDeliberating: false
+            // 保留 verdict 和 verdict_hash 用于缓存判断
+        };
     } else if (data.status === CaseStatus.CANCELLED) {
         onBack();
         return;
@@ -1049,10 +1057,15 @@ const CaseManager = ({ caseId, user, onBack, onSwitchUser }: { caseId: string, u
         persona={data.judgePersona} 
         onReset={() => onBack()} 
         onAppeal={() => {
-            update({ 
+            // 重审时保留判决和 hash，以便缓存逻辑生效
+            // 如果用户没有修改内容且选择相同法官，会直接使用缓存
+            update({
                 status: CaseStatus.JUDGE_SELECTION,
                 disputePoints: data.disputePoints,
-                isDeliberating: false // Ensure we reset this
+                isDeliberating: false,
+                // 保留 verdict 和 verdict_hash 用于缓存判断
+                // verdict: data.verdict (不需要显式设置，update 会保留)
+                // verdict_hash: data.verdict_hash (不需要显式设置，update 会保留)
             });
         }} 
       />;
