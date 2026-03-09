@@ -460,69 +460,40 @@ export const analyzeDisputeFocus = async (
   defenseDesc: string,
   plaintiffRebuttal: string,
   defendantRebuttal: string,
-  plaintiffEvidence: EvidenceItem[] 
+  plaintiffEvidence: EvidenceItem[]
 ): Promise<DisputePoint[]> => {
-  
-  // Format evidence for prompt
-  const evidenceText = plaintiffEvidence.length > 0 
-    ? plaintiffEvidence.map((e, i) => `${i+1}. [${e.type}] ${e.description || '无描述'}`).join('\n') 
-    : "（未提交主要证据）";
 
-  // New System Instruction as requested by user
-  // Emphasis on plain language (通俗易懂), concise (简明扼要), and Yes/No question format (是或否的疑问句结尾).
-  const JUDGE_SYSTEM_PROMPT = `你是一个经验丰富的 AI 法官，擅长挖掘情感纠纷背后的深层逻辑。
-  
-  你的任务是提炼 **最多 3 个** 最核心的争议焦点。
-  
-  【核心要求】：
-  1. **数量限制**：严格控制在 1-3 个争议焦点。不要超过 3 个。
-  2. **通俗易懂**：使用大白话概括背景，避免晦涩的法律术语，让普通人一眼就能看懂。
-  3. **简明扼要**：直击痛点，不要废话。
-  4. **明确提问**：每个焦点的描述(description)必须以具体的【是/否疑问句】结尾（例如“...是否合理？”“...是否应当...？”），方便双方直接回答“是”或“否”并展开辩论。
-  
-  【输出格式要求】：
-  必须返回纯净的 JSON 格式，不要包含 Markdown 代码块（如 \`\`\`json）。
-  
-  JSON 结构如下：
-  {
-    "points": [
-       {
-         "title": "简短标题 (4-8字)",
-         "description": "简短的大白话背景铺垫，并以 是/否 疑问句结尾"
-       }
-    ]
-  }`;
+  // Format evidence for prompt
+  const evidenceText = plaintiffEvidence.length > 0
+    ? plaintiffEvidence.map((e, i) => `${i+1}. [${e.type}] ${e.description || '无描述'}`).join('\n')
+    : “（未提交主要证据）”;
+
+  // 精简的 System Prompt，保持核心要求
+  const JUDGE_SYSTEM_PROMPT = `你是 AI 法官，提炼 1-3 个核心争议焦点。
+
+要求：
+1. 通俗易懂，直击痛点
+2. 每个焦点以”是/否”疑问句结尾
+3. 返回纯 JSON，格式：{“points”:[{“title”:”4-8字标题”,”description”:”背景+疑问句”}]}`;
 
   try {
     const result = await callGemini({
-      taskType: 'heavy', // Complex reasoning required
+      taskType: 'heavy',
       jsonMode: true,
-      temperature: 0.4, // Lower temperature for more deterministic JSON
+      temperature: 0.3, // 降低 temperature 提高速度
       systemInstruction: JUDGE_SYSTEM_PROMPT,
-      prompt: `请分析本案争议焦点：
-      
-      【案件类型】：${category}
-      
-      【原告陈述】：
-      ${plaintiffDesc || "（空）"}
-      
-      【原告证据】：
-      ${evidenceText}
-
-      【被告答辩】：
-      ${defenseDesc || "（被告缺席或未详细答辩）"}
-      
-      【原告质证】：
-      ${plaintiffRebuttal || "（无）"}
-      
-      【被告质证】：
-      ${defendantRebuttal || "（无）"}`
+      prompt: `案件类型：${category}
+原告：${plaintiffDesc || “（空）”}
+证据：${evidenceText}
+被告：${defenseDesc || “（缺席）”}
+原告质证：${plaintiffRebuttal || “（无）”}
+被告质证：${defendantRebuttal || “（无）”}`
     });
 
     const parsed = JSON.parse(cleanJson(result));
-    
+
     if (!parsed.points || !Array.isArray(parsed.points)) {
-        throw new Error("AI 返回格式错误");
+        throw new Error(“AI 返回格式错误”);
     }
 
     // Enforce max 3 points
@@ -578,106 +549,49 @@ export const generateVerdict = async (
     ...collectImages(defendantRebuttalEvidence)
   ];
 
-  const judgePrefix = persona === JudgePersona.BORDER_COLLIE ? '本汪裁判：' : '本喵裁判：';
-  
-  // Dynamic Persona Description based on new requirements
+  const judgePrefix = persona === JudgePersona.BORDER_COLLIE ? ‘本汪裁判：’ : ‘本喵裁判：’;
+
+  // 精简的法官人格描述
   const personaInstruction = persona === JudgePersona.BORDER_COLLIE
-    ? `【当前法官：边牧法官 (The Rational Dog Judge)】
-       - **核心思维**：法理思维 (Legalistic Mindset)。你将亲密关系视为一种特殊的“社会契约”。
-       - **判决风格**：客观、中立、理性、严肃。
-       - **关注点**：权利与义务的对等、承诺的履行、逻辑的一致性、客观证据的效力。
-       - **忌讳**：不被情绪绑架，不和稀泥。如果一方有错，必须根据逻辑和事实严厉指出，类似于法庭上的判决。`
-    : `【当前法官：猫猫法官 (The Empathetic Cat Judge)】
-       - **核心思维**：情绪事实 (Emotional Facts)。你认为在亲密关系中，“感受”也是一种事实。
-       - **判决风格**：兼顾客观事实与情绪浓度、治愈、温和但中立。
-       - **关注点**：双方的情绪需求、沟通中的心理动因、未被看见的委屈。
-       - **目标**：在认定事实对错的基础上，提供情绪价值，用高情商化解对立，追求“案结事了人和”。`;
+    ? `边牧法官：法理思维，客观中立，理性判断。关注权利义务对等、承诺履行、逻辑一致性。`
+    : `猫猫法官：情绪事实，兼顾感受，治愈温和。关注情绪需求、心理动因、未被看见的委屈。`;
 
-  // Combine user's requested persona with existing functional requirements
-  const systemPrompt = `你是一个经验丰富的 AI 法官，精通《民法典》婚姻家庭编精神与心理学。
+  // 精简的 System Prompt
+  const systemPrompt = `你是 AI 法官，精通民法典和心理学。${personaInstruction}
 
-  ${personaInstruction}
+输出 JSON：
+{
+  “summary”: “案件摘要”,
+  “facts”: [“事实1”,”事实2”],
+  “responsibilitySplit”: {“plaintiff”: 数字, “defendant”: 数字},
+  “disputeAnalyses”: [{“title”:”争议点”,”analysis”:”分析”}],
+  “reasoning”: “判决理由”,
+  “finalJudgment”: “${judgePrefix}开头，逐一回应诉请：1.【支持/驳回/修正支持】关于...的诉请，...”,
+  “penaltyTasks”: [{“assignee”:”PLAINTIFF/DEFENDANT”,”content”:”趣味任务”}],
+  “tone”: “string”
+}
 
-  任务: 对这起亲密关系纠纷做出最终判决。
-  
-  【全局语言要求】:
-  **所有输出内容（包括但不限于事实认定、争议分析、判决结果、任务内容）必须严格使用简体中文。** Do not use English.
+任务要求：
+1. 针对争议焦点分析
+2. 逐一回应原告诉请：”${plaintiffDemands}”
+3. 任务设计：人对人互动，针对争议点，简单有趣（如夸赞、拥抱、按摩等）`;
 
-  【关键输出要求】:
-
-  1. **事实认定 (facts)**:
-     - 提取案件中的关键客观事实。
-     - **必须使用简体中文**。
-
-  2. **争议焦点分析 (disputeAnalyses)**:
-     - 针对每个争议点进行深入分析。
-     - **必须使用简体中文**。
-
-  3. **法官寄语 (finalJudgment)**:
-     - **必须以 "${judgePrefix}" 开头** (这是第一行)。
-     - **从第二行开始，必须逐一回应原告的诉请**: "${plaintiffDemands}"。
-     - **每一条回应必须严格遵循以下列表格式**:
-       "数字. 【结论词】 关于[原告具体诉请内容]的诉请，[法官的详细理由与判决]..."
-     - **【结论词】限定为**:
-       - 【支持】 (完全支持原告)
-       - 【驳回】 (不支持原告)
-       - 【修正支持】 (部分支持或调整了方式/金额)
-     - **示例**:
-       1. 【支持】 关于要求被告道歉的诉请，鉴于被告确实存在过错，本庭予以支持。
-       2. 【修正支持】 关于要求被告赔偿精神损失费1000元的诉请，本庭认为金额过高，建议调整为请吃一顿火锅。
-       3. 【驳回】 关于要求分手的诉请，鉴于双方感情基础尚在...
-
-  4. **“爱的破冰大冒险”任务 (penaltyTasks)**:
-     - **设计理念**: 拒绝冷冰冰的惩罚！这是**促进和好**的趣味互动环节 (类似“真心话大冒险”)。
-     - **核心逻辑**: **必须针对【争议焦点】进行“对症下药”的趣味化解**。
-     - **关键约束 (CRITICAL)**:
-       1. **执行主体**: 必须是【人对人】的互动。
-       2. **严禁**: 严禁动物化(学狗叫)、严禁物质化(罚款/买礼物)、严禁沉重劳动、严禁写检讨。
-       3. **简单**: 必须是当下(家里)能立刻完成的，无道具门槛。
-     - **生成策略**:
-       1. **回顾本案争议点**: 
-          - 如果争吵是因为"态度不好/说话难听" -> 任务必须涉及"夸奖/说情话/撒娇"。
-          - 如果争吵是因为"缺少陪伴/冷暴力" -> 任务必须涉及"肢体接触(拥抱/牵手)/对视"。
-          - 如果争吵是因为"家务/具体琐事" -> 任务必须涉及"趣味服务(按摩/喂食)"。
-       2. **趣味包装**: 给任务起个好玩的名字。
-          - 例子: "【彩虹屁挑战】看着对方眼睛，连续夸赞3分钟不重样，笑了就重来。"
-          - 例子: "【无声的告白】双方对视一分钟，谁先说话谁就输，输了要亲对方一下。"
-          - 例子: "【女王/国王体验卡】输家为赢家提供一次‘五星级’捏肩服务，必须边捏边问候。"
-     - **分配原则**: 根据【责任划分 (responsibilitySplit)】决定。输家（责任大的一方）做 2-3 个，赢家做 1 个（作为给对方的台阶/奖励）。
-     - **JSON 格式**: 返回对象数组 [{ assignee: 'PLAINTIFF' | 'DEFENDANT', content: '...' }]。
-  
-  5. Output JSON Structure: 
-  { 
-    "summary": "案件摘要(中文)", 
-    "facts": ["事实1(中文)", "事实2(中文)"], 
-    "responsibilitySplit": {"plaintiff": number, "defendant": number}, 
-    "disputeAnalyses": [{"title": "争议点标题(中文)", "analysis": "分析内容(中文)"}], 
-    "reasoning": "判决理由(中文)", 
-    "finalJudgment": "法官寄语(中文)", 
-    "penaltyTasks": [{"assignee": "PLAINTIFF" | "DEFENDANT", "content": "任务内容(中文)"}], 
-    "tone": "string" 
-  }.`;
-
-  const casePrompt = `CASE FILE:
-  Category: ${category}
-  Plaintiff: ${plaintiffDesc}
-  Defense: ${defenseDesc}
-  
-  Evidence (P): ${formatEv(plaintiffEvidence)}
-  Evidence (D): ${formatEv(defendantEvidence)}
-  
-  Debate Points:
-  ${disputePoints.map(p => `- Q: ${p.title}? P: ${p.plaintiffArg} vs D: ${p.defendantArg}`).join('\n')}
-  `;
+  const casePrompt = `类型：${category}
+原告：${plaintiffDesc}
+被告：${defenseDesc}
+证据P：${formatEv(plaintiffEvidence)}
+证据D：${formatEv(defendantEvidence)}
+辩论：
+${disputePoints.map(p => `${p.title}? 原告：${p.plaintiffArg} 被告：${p.defendantArg}`).join(‘\n’)}`;
 
   try {
     const result = await callGemini({
-      taskType: 'heavy', // Verdict generation is the most complex task
+      taskType: ‘heavy’,
       jsonMode: true,
-      temperature: 0.7,
+      temperature: 0.6, // 降低 temperature 提高速度和稳定性
       systemInstruction: systemPrompt,
       prompt: casePrompt,
-      images: allImages
+      images: allImages.length > 0 ? allImages : undefined // 只在有图片时传递
     });
 
     const parsed = JSON.parse(cleanJson(result));
