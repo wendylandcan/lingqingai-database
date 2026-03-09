@@ -125,8 +125,49 @@ async function callGemini(params: {
            throw new Error(errorData.error || `HTTP Error: ${response.status} ${response.statusText}`);
         }
 
-        const data = await response.json();
-        return data.text || "";
+        // 处理 SSE 流式响应
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("无法读取响应流");
+        }
+
+        const decoder = new TextDecoder();
+        let fullText = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6); // 移除 "data: " 前缀
+
+              if (data === '[DONE]') {
+                break;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.text) {
+                  fullText += parsed.text;
+                }
+                if (parsed.error) {
+                  throw new Error(parsed.error);
+                }
+              } catch (e) {
+                // 忽略无法解析的行
+                if (data.trim() && data !== '[DONE]') {
+                  console.warn('无法解析 SSE 数据:', data);
+                }
+              }
+            }
+          }
+        }
+
+        return fullText;
 
       } catch (error: any) {
         clearTimeout(timeoutId);
