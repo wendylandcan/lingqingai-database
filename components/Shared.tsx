@@ -214,16 +214,16 @@ export const ThreeQualitiesInfo = () => {
 };
 
 // ... existing VoiceTextarea, EvidenceList, EvidenceCreator ...
-export const VoiceTextarea = ({ 
-  label, 
-  value, 
-  onChange, 
+export const VoiceTextarea = ({
+  label,
+  value,
+  onChange,
   placeholder,
   required = false
-}: { 
-  label: string, 
-  value: string, 
-  onChange: (val: string) => void, 
+}: {
+  label: string,
+  value: string,
+  onChange: (val: string) => void,
   placeholder: string,
   required?: boolean
 }) => {
@@ -231,11 +231,12 @@ export const VoiceTextarea = ({
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
-  
+  const [isComposing, setIsComposing] = useState(false); // 新增：跟踪输入法组合状态
+
   // References for MediaRecorder (Fallback)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  
+
   // Reference for Web Speech API (Native)
   const recognitionRef = useRef<any>(null);
   const activeSessionTextRef = useRef<string>("");
@@ -410,9 +411,20 @@ export const VoiceTextarea = ({
         </div>
       </div>
       <div className="relative">
-        <textarea 
+        <textarea
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            // 只在非输入法组合状态下更新
+            if (!isComposing) {
+              onChange(e.target.value);
+            }
+          }}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={(e) => {
+            setIsComposing(false);
+            // 输入法组合结束后，立即更新最终值
+            onChange((e.target as HTMLTextAreaElement).value);
+          }}
           className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none min-h-[120px] pb-12 transition-all"
           placeholder={placeholder}
           required={required}

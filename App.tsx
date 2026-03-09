@@ -199,15 +199,44 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
     const isDefendant = userRole === UserRole.DEFENDANT;
     const isSpectator = userRole === UserRole.SPECTATOR;
 
+    // 添加防抖处理，避免频繁更新
+    const debounceTimerRef = useRef<any>(null);
+    const [localPoints, setLocalPoints] = useState(data.disputePoints);
+
+    // 当 data.disputePoints 从外部更新时，同步到本地状态
+    useEffect(() => {
+        setLocalPoints(data.disputePoints);
+    }, [data.disputePoints]);
+
     const handleArgUpdate = (pointId: string, text: string) => {
-        const updatedPoints = data.disputePoints.map(p => {
+        // 立即更新本地状态，提供即时反馈
+        const updatedPoints = localPoints.map(p => {
             if (p.id === pointId) {
                 return isPlaintiff ? { ...p, plaintiffArg: text } : { ...p, defendantArg: text };
             }
             return p;
         });
-        onSubmit({ disputePoints: updatedPoints });
+        setLocalPoints(updatedPoints);
+
+        // 清除之前的定时器
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+        }
+
+        // 设置新的定时器，500ms 后提交到数据库
+        debounceTimerRef.current = setTimeout(() => {
+            onSubmit({ disputePoints: updatedPoints });
+        }, 500);
     };
+
+    // 组件卸载时清理定时器
+    useEffect(() => {
+        return () => {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+            }
+        };
+    }, []);
 
     const handleFinishDebate = () => {
         if (isPlaintiff) {
@@ -265,7 +294,7 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
             </div>
 
             <div className="space-y-6">
-                {data.disputePoints.map((point, index) => (
+                {localPoints.map((point, index) => (
                     <div key={point.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                         <div className="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
                             <span className="bg-slate-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
@@ -285,7 +314,7 @@ const DisputeDebateStep = ({ data, onSubmit, userRole }: { data: CaseData, onSub
                                     {!isPlaintiff && !point.plaintiffArg && <span className="text-slate-400 font-normal ml-auto text-xs">等待输入...</span>}
                                 </div>
                                 {isPlaintiff ? (
-                                    <VoiceTextarea 
+                                    <VoiceTextarea
                                         label=""
                                         placeholder="针对此问题（是/否），请陈述你的理由..."
                                         value={point.plaintiffArg || ""}
