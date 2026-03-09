@@ -35,14 +35,14 @@ const cleanJson = (text: string) => {
   return clean.trim();
 };
 
-async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, initialDelay = 1000): Promise<T> {
+async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 3, initialDelay = 1000): Promise<T> {
   let lastError;
   for (let i = 0; i < retries; i++) {
     try {
       return await operation();
     } catch (error: any) {
       lastError = error;
-      
+
       let status = error?.status || error?.code;
       const message = error?.message || '';
 
@@ -60,20 +60,20 @@ async function retryWithBackoff<T>(operation: () => Promise<T>, retries = 5, ini
       }
 
       // Retry on transient errors OR Resource Exhausted (429)
-      const isTransient = 
-          status === 503 || 
-          status === 429 || 
-          status === 500 || 
-          message.includes('overloaded') || 
-          message.includes('timeout') || 
+      const isTransient =
+          status === 503 ||
+          status === 429 ||
+          status === 500 ||
+          message.includes('overloaded') ||
+          message.includes('timeout') ||
           message.includes('timed out') ||
           message.includes('Resource exhausted') ||
           message.includes('429');
-      
+
       if (isTransient && i < retries - 1) {
-        // Linear/Exponential Backoff: 1s, 2s, 4s, 8s...
-        const waitTime = initialDelay * Math.pow(2, i);
-        // console.warn(`Retrying Gemini request (${i + 1}/${retries}) in ${waitTime}ms...`);
+        // 减少重试延迟：500ms, 1s, 2s
+        const waitTime = initialDelay * Math.pow(1.5, i);
+        console.warn(`重试中 (${i + 1}/${retries})，等待 ${Math.round(waitTime)}ms...`);
         await delay(waitTime);
         continue;
       }
@@ -95,8 +95,8 @@ async function callGemini(params: {
   images?: { inlineData: { data: string, mimeType: string } }[];
   contents?: any;
 }): Promise<string> {
-  // Add a 120s timeout to prevent hanging UI (Increased from 45s)
-  const TIMEOUT_MS = 120000;
+  // 增加超时时间到 180 秒，因为判决书生成需要更长时间
+  const TIMEOUT_MS = 180000;
 
   try {
     return await retryWithBackoff(async () => {
@@ -118,9 +118,8 @@ async function callGemini(params: {
           signal: controller.signal
         });
 
-        clearTimeout(timeoutId);
-
         if (!response.ok) {
+           clearTimeout(timeoutId);
            const errorData = await response.json().catch(() => ({}));
            throw new Error(errorData.error || `HTTP Error: ${response.status} ${response.statusText}`);
         }
@@ -128,16 +127,27 @@ async function callGemini(params: {
         // 处理 SSE 流式响应
         const reader = response.body?.getReader();
         if (!reader) {
+          clearTimeout(timeoutId);
           throw new Error("无法读取响应流");
         }
 
         const decoder = new TextDecoder();
         let fullText = '';
+        let lastChunkTime = Date.now();
+        const CHUNK_TIMEOUT = 60000; // 60秒内没有新数据就超时
 
         while (true) {
+          // 检查是否超过块超时时间
+          if (Date.now() - lastChunkTime > CHUNK_TIMEOUT) {
+            clearTimeout(timeoutId);
+            reader.cancel();
+            throw new Error("响应流超时：长时间未收到数据");
+          }
+
           const { done, value } = await reader.read();
           if (done) break;
 
+          lastChunkTime = Date.now(); // 更新最后接收数据的时间
           const chunk = decoder.decode(value, { stream: true });
           const lines = chunk.split('\n');
 
@@ -146,7 +156,8 @@ async function callGemini(params: {
               const data = line.slice(6); // 移除 "data: " 前缀
 
               if (data === '[DONE]') {
-                break;
+                clearTimeout(timeoutId);
+                return fullText;
               }
 
               try {
@@ -155,6 +166,7 @@ async function callGemini(params: {
                   fullText += parsed.text;
                 }
                 if (parsed.error) {
+                  clearTimeout(timeoutId);
                   throw new Error(parsed.error);
                 }
               } catch (e) {
@@ -167,6 +179,7 @@ async function callGemini(params: {
           }
         }
 
+        clearTimeout(timeoutId);
         return fullText;
 
       } catch (error: any) {
@@ -177,17 +190,28 @@ async function callGemini(params: {
   } catch (error: any) {
     console.error("Gemini API Error:", error);
     const message = error?.message || '';
-    
+
     if (message.includes('API key not valid') || message.includes('API_KEY_INVALID') || message.includes('API Key Configuration Error')) {
-        throw new Error("API Key 配置无效或缺失，请检查环境变量设置 (API_KEY)");
+        throw new Error("API Key 配置无效或缺失，请检查环境变量设置");
     }
 
     if (message.includes('429') || error.status === 429 || message.includes('Resource exhausted')) {
        throw new Error("调用次数超限，AI 法官需要休息一下，请稍后再试");
     }
-    if (message.includes('timed out')) {
-       throw new Error("网络请求超时，请检查网络后重试");
+
+    if (message.includes('timed out') || message.includes('timeout') || message.includes('超时') || error.name === 'AbortError') {
+       throw new Error("AI 法官思考时间过长，请重试或简化案情描述");
     }
+
+    if (message.includes('响应流超时')) {
+       throw new Error("网络连接不稳定，请检查网络后重试");
+    }
+
+    // 如果有具体错误信息，直接返回
+    if (message && message.length > 0 && message.length < 200) {
+       throw new Error(message);
+    }
+
     throw new Error("AI 法官正在休庭，请稍后重试");
   }
 }
