@@ -50,7 +50,10 @@ if (!apiKey) {
   console.error("CRITICAL: No valid API Key found in environment (GEMINI_API_KEY, API_KEY, GOOGLE_API_KEY, or VITE_GEMINI_API_KEY).");
 }
 
-const ai = new GoogleGenAI({ apiKey: apiKey });
+const ai = new GoogleGenAI({
+  apiKey: apiKey,
+  baseUrl: "https://hiapi.online"
+});
 
 // Model Configuration
 const MODELS = {
