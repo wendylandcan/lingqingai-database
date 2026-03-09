@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 
@@ -50,9 +50,10 @@ if (!apiKey) {
   console.error("CRITICAL: No valid API Key found in environment (GEMINI_API_KEY, API_KEY, GOOGLE_API_KEY, or VITE_GEMINI_API_KEY).");
 }
 
-const ai = new GoogleGenAI({
+// 使用 OpenAI SDK 连接到第三方中转代理
+const ai = new OpenAI({
   apiKey: apiKey,
-  baseUrl: "https://hiapi.online"
+  baseURL: "https://hiapi.online/v1"
 });
 
 // Model Configuration
@@ -127,19 +128,72 @@ app.post('/api/generate-summary', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Critical for Nginx to disable buffering
 
-    // Call Gemini API with Streaming
-    const response = await ai.models.generateContentStream({
+    // 构建 OpenAI 兼容的消息格式
+    const messages: any[] = [];
+
+    if (systemInstruction) {
+      messages.push({
+        role: 'system',
+        content: systemInstruction
+      });
+    }
+
+    // 处理用户消息内容
+    if (contents) {
+      // 如果有 contents，需要转换格式
+      if (Array.isArray(contents)) {
+        messages.push(...contents);
+      } else if (contents.parts) {
+        const userContent: any[] = [];
+        for (const part of contents.parts) {
+          if (part.text) {
+            userContent.push({ type: 'text', text: part.text });
+          } else if (part.inlineData) {
+            userContent.push({
+              type: 'image_url',
+              image_url: {
+                url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+              }
+            });
+          }
+        }
+        messages.push({ role: 'user', content: userContent });
+      } else {
+        messages.push({ role: 'user', content: contents });
+      }
+    } else if (images && images.length > 0) {
+      // 处理图片
+      const userContent: any[] = [{ type: 'text', text: prompt || '' }];
+      for (const img of images) {
+        if (img.inlineData) {
+          userContent.push({
+            type: 'image_url',
+            image_url: {
+              url: `data:${img.inlineData.mimeType};base64,${img.inlineData.data}`
+            }
+          });
+        }
+      }
+      messages.push({ role: 'user', content: userContent });
+    } else {
+      messages.push({ role: 'user', content: prompt || '' });
+    }
+
+    // 调用 OpenAI 兼容的 API（流式）
+    const stream = await ai.chat.completions.create({
       model: selectedModel,
-      contents: contentsInput,
-      config: config
+      messages: messages,
+      temperature: temperature ?? 0.7,
+      stream: true,
+      ...(jsonMode ? { response_format: { type: 'json_object' } } : {})
     });
 
-    for await (const chunk of response) {
-      const text = chunk.text;
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content || '';
       if (text) {
         // Send data chunk
         res.write(`data: ${JSON.stringify({ text })}\n\n`);
-        // Attempt to flush if method exists (though standard Express res doesn't have .flush())
+        // Attempt to flush if method exists
         if ((res as any).flush) (res as any).flush();
       }
     }
