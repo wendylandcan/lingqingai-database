@@ -480,7 +480,7 @@ export const analyzeDisputeFocus = async (
     const result = await callGemini({
       taskType: 'heavy',
       jsonMode: true,
-      temperature: 0.3, // 降低 temperature 提高速度
+      temperature: 0.35, // 平衡速度和质量
       systemInstruction: JUDGE_SYSTEM_PROMPT,
       prompt: `案件类型：${category}
 原告：${plaintiffDesc || “（空）”}
@@ -556,25 +556,32 @@ export const generateVerdict = async (
     ? `边牧法官：法理思维，客观中立，理性判断。关注权利义务对等、承诺履行、逻辑一致性。`
     : `猫猫法官：情绪事实，兼顾感受，治愈温和。关注情绪需求、心理动因、未被看见的委屈。`;
 
-  // 精简的 System Prompt
+  // 精简但保留关键指导的 System Prompt
   const systemPrompt = `你是 AI 法官，精通民法典和心理学。${personaInstruction}
 
-输出 JSON：
+核心任务：对亲密关系纠纷做出判决，输出 JSON。
+
+关键要求：
+1. finalJudgment 必须以”${judgePrefix}”开头，逐一回应诉请：”${plaintiffDemands}”
+   格式：数字.【支持/驳回/修正支持】关于...的诉请，...
+2. penaltyTasks 设计原则：
+   - 人对人互动（禁止学狗叫、罚款、写检讨）
+   - 针对争议点：态度问题→夸赞/说情话；缺少陪伴→拥抱/对视；家务琐事→按摩/喂食
+   - 简单有趣，当下可完成
+   - 根据责任划分分配任务
+3. 所有内容使用简体中文
+
+JSON 结构：
 {
   “summary”: “案件摘要”,
   “facts”: [“事实1”,”事实2”],
   “responsibilitySplit”: {“plaintiff”: 数字, “defendant”: 数字},
   “disputeAnalyses”: [{“title”:”争议点”,”analysis”:”分析”}],
   “reasoning”: “判决理由”,
-  “finalJudgment”: “${judgePrefix}开头，逐一回应诉请：1.【支持/驳回/修正支持】关于...的诉请，...”,
-  “penaltyTasks”: [{“assignee”:”PLAINTIFF/DEFENDANT”,”content”:”趣味任务”}],
+  “finalJudgment”: “${judgePrefix}开头的判决”,
+  “penaltyTasks”: [{“assignee”:”PLAINTIFF/DEFENDANT”,”content”:”任务”}],
   “tone”: “string”
-}
-
-任务要求：
-1. 针对争议焦点分析
-2. 逐一回应原告诉请：”${plaintiffDemands}”
-3. 任务设计：人对人互动，针对争议点，简单有趣（如夸赞、拥抱、按摩等）`;
+}`;
 
   const casePrompt = `类型：${category}
 原告：${plaintiffDesc}
@@ -588,7 +595,7 @@ ${disputePoints.map(p => `${p.title}? 原告：${p.plaintiffArg} 被告：${p.de
     const result = await callGemini({
       taskType: ‘heavy’,
       jsonMode: true,
-      temperature: 0.6, // 降低 temperature 提高速度和稳定性
+      temperature: 0.65, // 平衡创意性和速度
       systemInstruction: systemPrompt,
       prompt: casePrompt,
       images: allImages.length > 0 ? allImages : undefined // 只在有图片时传递
