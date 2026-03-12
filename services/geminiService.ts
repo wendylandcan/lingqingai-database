@@ -423,9 +423,9 @@ export const analyzeEvidenceCredibility = async (
   - 描述：${evidence.description || '无'}
   - 内容：${evidence.type === EvidenceType.TEXT || evidence.type === EvidenceType.AUDIO ? evidence.content : '(见附带图片)'}
   
-  【原告主张】：${plaintiffArg || "（未对此具体说明）"}
-  
-  【被告质证/主张】：${defendantArg || "（未对此具体说明）"}
+  【原告主张】：${plaintiffArg || "(未对此具体说明)"}
+
+  【被告质证/主张】：${defendantArg || "(未对此具体说明)"}
   `;
 
   // Prepare Images if applicable
