@@ -483,11 +483,11 @@ export const analyzeDisputeFocus = async (
       temperature: 0.35, // 平衡速度和质量
       systemInstruction: JUDGE_SYSTEM_PROMPT,
       prompt: `案件类型：${category}
-原告：${plaintiffDesc || “（空）”}
+原告：${plaintiffDesc || “(空)”}
 证据：${evidenceText}
-被告：${defenseDesc || “（缺席）”}
-原告质证：${plaintiffRebuttal || “（无）”}
-被告质证：${defendantRebuttal || “（无）”}`
+被告：${defenseDesc || “(缺席)”}
+原告质证：${plaintiffRebuttal || “(无)”}
+被告质证：${defendantRebuttal || “(无)”}`
     });
 
     const parsed = JSON.parse(cleanJson(result));
