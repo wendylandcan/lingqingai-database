@@ -325,7 +325,7 @@ export const generateCaseTitle = async (description: string): Promise<string> =>
       systemInstruction: `你是一个法院书记员。请根据用户的案件描述，提炼一个简短的中文案件标题。
       
       【严格约束】：
-      1. **格式**：必须以“案”字结尾（例如“火锅约会迟到案”）。
+      1. **格式**：必须以"案"字结尾（例如"火锅约会迟到案"）。
       2. **长度**：严格控制在 4-10 个汉字以内。
       3. **内容**：概括精准，带点幽默感或生活气息。
       4. **纯净输出**：只返回标题文本，严禁包含任何标点、解释、引号或前缀。`,
@@ -473,8 +473,8 @@ export const analyzeDisputeFocus = async (
 
 要求：
 1. 通俗易懂，直击痛点
-2. 每个焦点以”是/否”疑问句结尾
-3. 返回纯 JSON，格式：{“points”:[{“title”:”4-8字标题”,”description”:”背景+疑问句”}]}`;
+2. 每个焦点以"是/否"疑问句结尾
+3. 返回纯 JSON，格式：{"points":[{"title":"4-8字标题","description":"背景+疑问句"}]}`;
 
   try {
     const result = await callGemini({
@@ -483,17 +483,17 @@ export const analyzeDisputeFocus = async (
       temperature: 0.35, // 平衡速度和质量
       systemInstruction: JUDGE_SYSTEM_PROMPT,
       prompt: `案件类型：${category}
-原告：${plaintiffDesc || “(空)”}
+原告：${plaintiffDesc || "(空)"}
 证据：${evidenceText}
-被告：${defenseDesc || “(缺席)”}
-原告质证：${plaintiffRebuttal || “(无)”}
-被告质证：${defendantRebuttal || “(无)”}`
+被告：${defenseDesc || "(缺席)"}
+原告质证：${plaintiffRebuttal || "(无)"}
+被告质证：${defendantRebuttal || "(无)"}`
     });
 
     const parsed = JSON.parse(cleanJson(result));
 
     if (!parsed.points || !Array.isArray(parsed.points)) {
-        throw new Error(“AI 返回格式错误”);
+        throw new Error("AI 返回格式错误");
     }
 
     // Enforce max 3 points
@@ -562,7 +562,7 @@ export const generateVerdict = async (
 核心任务：对亲密关系纠纷做出判决，输出 JSON。
 
 关键要求：
-1. finalJudgment 必须以”${judgePrefix}”开头，逐一回应诉请：”${plaintiffDemands}”
+1. finalJudgment 必须以"${judgePrefix}"开头，逐一回应诉请："${plaintiffDemands}"
    格式：数字.【支持/驳回/修正支持】关于...的诉请，...
 2. penaltyTasks 设计原则：
    - 人对人互动（禁止学狗叫、罚款、写检讨）
@@ -573,14 +573,14 @@ export const generateVerdict = async (
 
 JSON 结构：
 {
-  “summary”: “案件摘要”,
-  “facts”: [“事实1”,”事实2”],
-  “responsibilitySplit”: {“plaintiff”: 数字, “defendant”: 数字},
-  “disputeAnalyses”: [{“title”:”争议点”,”analysis”:”分析”}],
-  “reasoning”: “判决理由”,
-  “finalJudgment”: “${judgePrefix}开头的判决”,
-  “penaltyTasks”: [{“assignee”:”PLAINTIFF/DEFENDANT”,”content”:”任务”}],
-  “tone”: “string”
+  "summary": "案件摘要",
+  "facts": ["事实1","事实2"],
+  "responsibilitySplit": {"plaintiff": 数字, "defendant": 数字},
+  "disputeAnalyses": [{"title":"争议点","analysis":"分析"}],
+  "reasoning": "判决理由",
+  "finalJudgment": "${judgePrefix}开头的判决",
+  "penaltyTasks": [{"assignee":"PLAINTIFF/DEFENDANT","content":"任务"}],
+  "tone": "string"
 }`;
 
   const casePrompt = `类型：${category}
