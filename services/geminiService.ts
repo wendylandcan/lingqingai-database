@@ -466,7 +466,7 @@ export const analyzeDisputeFocus = async (
   // Format evidence for prompt
   const evidenceText = plaintiffEvidence.length > 0
     ? plaintiffEvidence.map((e, i) => `${i+1}. [${e.type}] ${e.description || '无描述'}`).join('\n')
-    : “(未提交主要证据)”;
+    : '(未提交主要证据)';
 
   // 精简的 System Prompt，保持核心要求
   const JUDGE_SYSTEM_PROMPT = `你是 AI 法官，提炼 1-3 个核心争议焦点。
