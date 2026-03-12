@@ -549,7 +549,7 @@ export const generateVerdict = async (
     ...collectImages(defendantRebuttalEvidence)
   ];
 
-  const judgePrefix = persona === JudgePersona.BORDER_COLLIE ? ‘本汪裁判：’ : ‘本喵裁判：’;
+  const judgePrefix = persona === JudgePersona.BORDER_COLLIE ? '本汪裁判：' : '本喵裁判：';
 
   // 精简的法官人格描述
   const personaInstruction = persona === JudgePersona.BORDER_COLLIE
@@ -589,11 +589,11 @@ JSON 结构：
 证据P：${formatEv(plaintiffEvidence)}
 证据D：${formatEv(defendantEvidence)}
 辩论：
-${disputePoints.map(p => `${p.title}? 原告：${p.plaintiffArg} 被告：${p.defendantArg}`).join(‘\n’)}`;
+${disputePoints.map(p => `${p.title}? 原告：${p.plaintiffArg} 被告：${p.defendantArg}`).join('\n')}`;
 
   try {
     const result = await callGemini({
-      taskType: ‘heavy’,
+      taskType: 'heavy',
       jsonMode: true,
       temperature: 0.65, // 平衡创意性和速度
       systemInstruction: systemPrompt,
