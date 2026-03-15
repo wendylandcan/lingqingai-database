@@ -414,15 +414,13 @@ export const VoiceTextarea = ({
         <textarea
           value={value}
           onChange={(e) => {
-            // 只在非输入法组合状态下更新
-            if (!isComposing) {
-              onChange(e.target.value);
-            }
+            // 总是更新值，不要在输入法组合时阻止
+            onChange(e.target.value);
           }}
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={(e) => {
             setIsComposing(false);
-            // 输入法组合结束后，立即更新最终值
+            // 输入法组合结束后，确保最终值已更新
             onChange((e.target as HTMLTextAreaElement).value);
           }}
           className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none min-h-[120px] pb-12 transition-all"
@@ -781,9 +779,11 @@ export const EvidenceCreator = ({
     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
       <label className="text-xs font-bold text-slate-500 uppercase">添加新证据</label>
       <div className="relative">
-        <textarea 
+        <textarea
            value={textInput}
            onChange={e => setTextInput(e.target.value)}
+           onCompositionStart={() => {}}
+           onCompositionEnd={() => {}}
            className="w-full p-3 pr-12 text-sm border border-slate-300 rounded-lg h-24"
            placeholder="输入文字或证据描述..."
         />
